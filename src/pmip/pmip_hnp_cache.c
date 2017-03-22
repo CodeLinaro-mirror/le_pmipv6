@@ -7,12 +7,17 @@
 * \project OpenAirInterface
 * \email: openair3@eurecom.fr
 */
+
+/*for now we are not using Radius client so disable*/
+#undef USE_RADIUS
+
 #define PMIP
 #define PMIP_HNP_CACHE_C
 #ifdef HAVE_CONFIG_H
 #include <config.h>
 #endif
 #include <stdlib.h>
+#include <arpa/inet.h>
 //---------------------------------------------------------------------------------------------------------------------
 #include "pmip_hnp_cache.h"
 #include "pmip_consts.h"
@@ -31,6 +36,8 @@
 \brief Global array containing all "network prefix/interface id" known for a MAG.
 */
 static mnid_hnp_t 			g_mn_hn_map[MAX_MOBILES];
+static mnid_hnp_t 			default_mn_hn_map;
+
 /*! \var int 					g_mn_count
 \brief Number of elements in g_mn_hn_map.
 */
@@ -104,7 +111,33 @@ struct in6_addr EUI48_to_EUI64(struct in6_addr macaddr)
 	iid.s6_addr[15] = macaddr.s6_addr[15];
 	return iid;
 }
-//-----------------------------------------------------------------------------
+
+void lma_get_prefix (struct in6_addr mn_iid,struct in6_addr *mn_in_addr)
+{
+    struct in6_addr     addr;
+    int                 res = -1;
+
+    memset(&addr, 0x0, sizeof(struct in6_addr));
+    if(!IN6_IS_ADDR_UNSPECIFIED(mn_in_addr))
+    {
+     /*find any existing IP matches for this MN ID*/
+	  addr = lma_mnid_hnp_map(mn_iid, &res);
+	  if(res >= 0)
+	  {
+	    /*already address exist in cache give the same prefix */
+	    *mn_in_addr = addr;
+		return;
+	  }
+	  //else -> do nothing it assign the same prefix MAG requested
+	}
+
+	dbg ("ALL_ZERO Address. Assign default prefix %x:%x:%x:%x:%x:%x:%x:%x for mn_id %x:%x:%x:%x:%x:%x:%x:%x",
+		  NIP6ADDR(&default_mn_hn_map.mn_prefix),
+		  NIP6ADDR(&mn_iid));
+	*mn_in_addr = default_mn_hn_map.mn_prefix;
+
+}
+
 void pmip_insert_into_hnp_cache(struct in6_addr mn_iid, struct in6_addr addr)
 {
     int j = 0;
@@ -128,7 +161,36 @@ void pmip_insert_into_hnp_cache(struct in6_addr mn_iid, struct in6_addr addr)
 //-----------------------------------------------------------------------------
 void pmip_lma_mn_to_hnp_cache_init(void)
 {
-    memset((void*)g_mn_hn_map, 0, sizeof(mnid_hnp_t) * MAX_MOBILES);
+  struct in6_addr     addr, addr1;
+  FILE               *fp;
+  unsigned int        ap, ap1;
+  int i, j = 0;
+  char                str_addr[INET6_ADDRSTRLEN], str_addr_iid[INET6_ADDRSTRLEN];
+
+  memset((void*)g_mn_hn_map, 0, sizeof(mnid_hnp_t) * MAX_MOBILES);
+  memset((void*)&default_mn_hn_map, 0, sizeof(mnid_hnp_t));
+
+  if ((fp = fopen ("/etc/match", "r")) == NULL) {
+			dbg ("can't open /etc/match file .. Assign default");
+		    inet_pton(AF_INET6, DEFAULT_GLOBAL_PREFIX, &default_mn_hn_map.mn_prefix );
+			return;
+		}
+		dbg ("\n--------lma prefix read--------\n");
+		while ((fscanf (fp, "%32s %32s\n", str_addr, str_addr_iid) != EOF) && (j < MAX_MOBILES)) {
+			for (i = 0; i < IPV6_MAX_CHAR; i++) {
+				sscanf (str_addr + i * 2, "%02x", &ap);
+				addr.s6_addr[i] = (unsigned char) ap;
+				sscanf (str_addr_iid + i * 2, "%02x", &ap1);
+				addr1.s6_addr[i] = (unsigned char) ap1;
+			}
+		dbg ("\n----::::: %x:%x:%x:%x:%x:%x:%x:%x----end read prefix\n", NIP6ADDR (&addr1));
+        dbg ("\n----::::: %x:%x:%x:%x:%x:%x:%x:%x----end read prefix\n", NIP6ADDR (&addr));
+			j++;
+		}
+		fclose (fp);
+
+	default_mn_hn_map.mn_prefix = addr1;
+
 }
 //-----------------------------------------------------------------------------
 struct in6_addr lma_mnid_hnp_map(struct in6_addr mnid, int *result)
@@ -192,8 +254,8 @@ int pmip_mn_to_hnp_cache_init (void)
     memset(g_mn_hn_map, 0, sizeof(mnid_hnp_t) * MAX_MOBILES);
     j = 0;
     if ((fp = fopen ("/etc/match", "r")) == NULL) {
-        printf ("can't open %s:", "/match");
-        exit (0);
+        dbg("can't open %s:", "/match");
+		return 0;
     }
     while ((fscanf (fp, "%32s %32s\n", str_addr, str_addr_iid) != EOF) && (j < MAX_MOBILES)) {
         for (i = 0; i < 16; i++) {
@@ -227,6 +289,8 @@ int pmip_mn_to_hnp_cache_init (void)
 struct in6_addr mnid_hnp_map(struct in6_addr mnid, int *aaa_result)
 {
     int l_flag = 0;
+    struct in6_addr cached_prefix;
+    memset(&cached_prefix, 0, sizeof(struct in6_addr));
 #if !defined (USE_RADIUS) || defined(CACHE_RADIUS)
     int j = 0;
     dbg("Entering the address match . . \n");
@@ -322,13 +386,16 @@ struct in6_addr mnid_hnp_map(struct in6_addr mnid, int *aaa_result)
                 }
             }
         }
+      }
     }
-    }
-#endif
     dbg("mnid not found\n");
-    struct in6_addr tmp;
-    memset(&tmp, 0, sizeof(struct in6_addr));
     *aaa_result = -1;
-    return tmp;
+    return cached_prefix;
+#else
+    dbg("MAG Non Radius conf\n");
+   /*This is a New device that is attaching so send prefix as ALL_ZEROS to get new prefix from LMA*/
+    *aaa_result = 0;
+    return cached_prefix;
+#endif
 }
 

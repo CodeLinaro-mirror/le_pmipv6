@@ -149,6 +149,8 @@ typedef struct pmip_entry_t {
 	int						unreach;			/*!< \brief ICMP dest unreach count */
 	int						tunnel;				/*!< \brief Tunnel interface index */
 	int						link;				/*!< \brief Home link interface index */
+	uint8_t                 gre_key_valid;
+	uint32_t                gre_key;
 	/* PBU/PBRR message for retransmissions */
     struct iovec 			mh_vec[2 * (IP6_MHOPT_MAX + 1)];          /* was 7 */
     int 					iovlen;
@@ -280,5 +282,7 @@ protected_pmip_cache(void pmip_cache_delete(const struct in6_addr *our_addr, con
 * \return	The iterate status.
 */
 public_pmip_cache(int pmip_cache_iterate(int (*func) (void *, void *), void *arg);)
+public_pmip_cache(int pmip_cache_iterate_ext(int (*func) (void *, void *, void *), void *arg, void * usr_data);)
+
 #endif
 /** @}*/

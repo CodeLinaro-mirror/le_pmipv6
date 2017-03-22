@@ -35,6 +35,10 @@
 //-----------------------------------------------------------------------------
 #    include <pcap.h>
 #    include <netinet/ip6.h>
+#    include <stdio.h>
+#    include <stdlib.h>
+#    include <ctype.h>
+
 //-----------------------------------------------------------------------------
 #    define PCAPMAXBYTES2CAPTURE 65535
 #    define PCAPTIMEDELAYKERNEL2USERSPACE 1000
@@ -62,6 +66,10 @@ private_pmip_pcap(void pmip_pcap_msg_handler_associate(struct in6_addr mn_iidP, 
 * \param[in]  iifP     The interface identifier that is listened for capturing packets.
 */
 private_pmip_pcap(void pmip_pcap_msg_handler_deassociate(struct in6_addr mn_iidP, int iifP);)
+public_pmip_pcap(int pmip_send_qcmap_dev_query(struct in6_addr mn_iidP, int iifP, struct in6_addr *hw_addr);)
+public_pmip_pcap(void ipv6_to_mac(const struct in6_addr * mac_v6, uint8_t *mac);)
+public_pmip_pcap(void mac_to_ipv6(const uint8_t *mac, struct in6_addr * mac_v6);)
+
 #endif
 /** @}*/
 

@@ -23,11 +23,16 @@
 #include "debug.h"
 #include "conf.h"
 //---------------------------------------------------------------------------------------------------------------------
-int pmip_tunnel_add(struct in6_addr *local, struct in6_addr *remote, int link)
+int pmip_tunnel_add(struct in6_addr *local, struct in6_addr *remote, int link, uint8_t gre_key_valid, uint32_t gre_key)
 {
+	gre_info_type gre_info;
+	gre_info.gre_key_valid = gre_key_valid;
+	gre_info.gre_key = gre_key;
+
 	if (conf.TunnelingEnabled) {
 		dbg("Creating IP-in-IP tunnel link %d from %x:%x:%x:%x:%x:%x:%x:%x to %x:%x:%x:%x:%x:%x:%x:%x...\n", link, NIP6ADDR(local), NIP6ADDR(remote));
-		int tunnel = tunnel_add(local, remote, link, 0, 0); // -1 if error
+		dbg("gre key valid:%d, key:%d\n",gre_key_valid, gre_key );
+		int tunnel = tunnel_add(local, remote, link, 0, (gre_key_valid?(void*)&gre_info:NULL)); // -1 if error
 		return tunnel;
 	} else {
 		dbg("IP-in-IP tunneling is disabled, no tunnel is created\n");

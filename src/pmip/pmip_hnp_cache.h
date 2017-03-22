@@ -36,6 +36,14 @@
 //-----------------------------------------------------------------------------
 #include <netinet/ip6.h>
 //-----------------------------------------------------------------------------
+#define DEFAULT_GLOBAL_PREFIX "2002:c023:9c17:b02:0:0:0:0"
+#define DEFAULT_GRE_KEY  5
+#define IPV6_MAX_CHAR 16
+
+#define GRE_KEY_VALID    1
+#define GRE_KEY_INVALID  0
+
+
 /*! \struct  mnid_hnp_t
 * \brief Data structure to store the association of a network prefix and a mobile interface identifier.
 */typedef struct mnid_hnp_t {
@@ -62,6 +70,12 @@ protected_pmip_hnp_cache(struct in6_addr EUI48_to_EUI64(struct in6_addr macaddr)
 * \note This function check for duplicates
 */
 protected_pmip_hnp_cache(void pmip_insert_into_hnp_cache(struct in6_addr mn_iid, struct in6_addr addr);)
+
+/*! \fn void lma_get_prefix (struct in6_addr mn_iid,struct in6_addr *mn_in_addr)
+* \brief Gets the prefix that need to be assinged to MN
+*/
+protected_pmip_hnp_cache(void lma_get_prefix (struct in6_addr mn_iid,struct in6_addr *mn_in_addr);)
+
 /*! \fn void pmip_lma_mn_to_hnp_cache_init(void)
 * \brief Initialize the home network prefix cache in the LMA.
 */

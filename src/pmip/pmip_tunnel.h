@@ -42,7 +42,7 @@
 * \param[in]  link   Interface id
 * \return    Returns interface index of the newly created tunnel, or negative on error.
 */
-protected_pmip_tunnel(int pmip_tunnel_add(struct in6_addr *local, struct in6_addr *remote, int link);)
+protected_pmip_tunnel(int pmip_tunnel_add(struct in6_addr *local, struct in6_addr *remote, int link, uint8_t gre_key_valid, uint32_t gre_key);)
 /*! \fn int pmip_tunnel_del(int ifindex)
 * \brief Deletes a tunnel identified by ifindex.
 * \param[in]  ifindex Tunnel interface index

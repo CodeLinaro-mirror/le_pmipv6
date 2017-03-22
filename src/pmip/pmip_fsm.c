@@ -17,6 +17,7 @@
 #include "pmip_hnp_cache.h"
 #include "pmip_lma_proc.h"
 #include "pmip_mag_proc.h"
+#include "pmip_pcap.h"
 //---------------------------------------------------------------------------------------------------------------------
 #ifdef ENABLE_VT
 #    include "vt.h"
@@ -38,7 +39,7 @@ int mag_fsm(msg_info_t * info)
 	int aaa_result = 0;
 	pmip_entry_t *bce;
 	struct in6_addr prefix;
-	struct in6_addr hw_address = EUI64_to_EUI48(info->mn_iid);
+	struct in6_addr hw_address = info->mn_hw_address;
 	int type = pmip_cache_exists(&conf.OurAddress, &hw_address);
 	int mutex_return_code;
 
@@ -53,12 +54,14 @@ int mag_fsm(msg_info_t * info)
 		dbg("BCE_NO_ENTRY\n");
 		if (info->msg_event == hasRS) {
 			dbg("New MN is found sending RS, start new registration ...\n\n");
+		  if (pmip_send_qcmap_dev_query(info->mn_iid, info->iif, &hw_address)){
+			dbg("QCMAP Acknowledged Device. Add BCE and send PBU\n");
 			bce = pmip_cache_alloc(BCE_TEMP);
 			prefix = mnid_hnp_map(hw_address, &aaa_result);
 			if (aaa_result >= 0) {
 				bce->mn_prefix = prefix;
 				bce->mn_suffix = info->mn_iid;
-				bce->mn_hw_address = EUI64_to_EUI48(info->mn_iid);
+				bce->mn_hw_address = hw_address;
 				info->mn_prefix = prefix;
 				result = mag_pmip_md(info, bce);
 				dbg("Movement detection is finished, now going to add an entry into the cache\n\n");
@@ -67,6 +70,9 @@ int mag_fsm(msg_info_t * info)
 			} else {
 				dbg("Authentication failed\n");
 			}
+		  } else {
+				dbg("QCMAP did not detect Device. Ignore RS\n");
+		  }
 			//yet to process
 		} else if (info->msg_event == hasWLCCP) {
 			dbg("Incoming MN is detected by Wireless Access Point, start new registration ...\n\n");
@@ -101,6 +107,10 @@ int mag_fsm(msg_info_t * info)
 				//Modify the entry with additional info.
 				del_task(&bce->tqe);    //Delete timer retransmission PBU (if any)
 				bce->PBA_flags = info->PBA_flags;
+				bce->mn_prefix = info->mn_prefix;
+				bce->gre_key_valid = info->gre_key_valid;
+				if(info->gre_key_valid)
+					bce->gre_key = info->gre_key;
 				// trick not to let LMA break the tunnel a few milli-seconds before MAG send a new PBU -> loss of traffic
 				if (info->lifetime.tv_sec > 10) {
 				    bce->lifetime.tv_sec = info->lifetime.tv_sec - 8;
@@ -202,17 +212,20 @@ int lma_fsm(msg_info_t * info)
 	struct in6_addr r_tmp1;
 	int result = 0;
 	pmip_entry_t *bce = NULL;
-	struct in6_addr hw_address = EUI64_to_EUI48(info->mn_iid);
+	struct in6_addr hw_address = info->mn_hw_address;
 	int type = pmip_cache_exists(&conf.OurAddress, &hw_address);
 	switch (type) {
 	//--------------------------------------
 	case BCE_NO_ENTRY:
-		dbg("No PMIP entry found for %x:%x:%x:%x:%x:%x:%x:%x ... \n", NIP6ADDR(&info->mn_iid));
+		dbg("No PMIP entry found for %x:%x:%x:%x:%x:%x:%x:%x ... \n",
+			 NIP6ADDR(&info->mn_hw_address));
 		if (info->msg_event == hasPBU && (info->lifetime.tv_sec > 0)) {
 			//Create New Proxy Binding Entry storing information
 			dbg("PBU for a new MN ... Location Registration starting now...\n");
 			bce = pmip_cache_alloc(BCE_PMIP);
 			if (bce != NULL) {
+                lma_get_prefix(hw_address,&(info->mn_prefix));
+                dbg("\nlma assigned  prefix %x:%x:%x:%x:%x:%x:%x:%x \n",NIP6ADDR(&info->mn_prefix));
 				pmip_insert_into_hnp_cache(hw_address, info->mn_prefix);
 				lma_update_binding_entry(bce, info);   //Save information into bce
 				lma_reg(bce);

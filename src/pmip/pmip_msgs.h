@@ -69,14 +69,14 @@ protected_pmip_msgs(int is_pba_is_response_to_last_pbu_sent(msg_info_t * pba_inf
 * \param[in]  mn_addr The mobile address
 * \return   The mobile interface identifier in a struct in6_addr.
 */
-private_pmip_msgs(struct in6_addr get_node_id(struct in6_addr *mn_addr);)
+public_pmip_msgs(struct in6_addr get_node_id(struct in6_addr *mn_addr);)
 /*! \fn struct in6_addr get_node_prefix(struct in6_addr *)
 * \brief Retrieve the prefix of a IPv6 address
 * \param[in]  mn_addr A mobile IPv6 address
 * \return   The prefix.
 * \note The prefix len is 64 bits
 */
-protected_pmip_msgs(struct in6_addr get_node_prefix(struct in6_addr *mn_addr);)
+public_pmip_msgs(struct in6_addr get_node_prefix(struct in6_addr *mn_addr);)
 /*! \fn int mh_create_opt_home_net_prefix(struct iovec *, struct in6_addr *)
 * \brief Creates the Home Network Prefix option.
 * \param[in,out]  iov Storage

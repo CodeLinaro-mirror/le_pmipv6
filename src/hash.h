@@ -47,6 +47,9 @@ void *hash_get(const struct hash *h,
 
 int hash_iterate(const struct hash *h, int (*func)(void *data, void *arg), void *arg);
 
+int hash_iterate_ext(const struct hash *h, int (*func)(void *, void *, void *),
+                        void *arg, void* usr_data);
+
 /* Add a hash entry to hash */		 
 int hash_add(const struct hash *h, void  *data,
 	     struct in6_addr *our_addr, struct in6_addr *peer_addr);

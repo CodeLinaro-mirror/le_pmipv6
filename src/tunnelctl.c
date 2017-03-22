@@ -76,7 +76,9 @@
 #define TDBG(x...)
 #endif
 
-const char basedev[] = "ip6tnl0";
+const char basedev[] = "ip6gre0";
+
+static gre_info_type gre_info;
 
 static pthread_mutex_t tnl_lock;
 
@@ -84,7 +86,7 @@ static int tnl_fd;
 
 struct mip6_tnl {
 	struct list_head list;
-	struct ip6_tnl_parm parm;
+	struct ip6_tnl_parm2 parm;
 	int ifindex;
 	int users;
 };
@@ -115,7 +117,7 @@ static inline void tnl_dump(struct mip6_tnl *tnl)
 	     tnl->users);
 }
 
-static inline void tnl_parm_dump(struct ip6_tnl_parm *parm)
+static inline void tnl_parm_dump(struct ip6_tnl_parm2 *parm)
 {
 	TDBG("name: %s\n"
 	     "link: %d\n"
@@ -233,13 +235,18 @@ static struct mip6_tnl *__tunnel_add(struct in6_addr *local,
 
 	memset(tnl, 0, sizeof(struct mip6_tnl));
 	tnl->users = 1;
-	tnl->parm.proto = IPPROTO_IPV6;
+	tnl->parm.proto = IPPROTO_GRE;
 	tnl->parm.flags = IP6_TNL_F_MIP6_DEV|IP6_TNL_F_IGN_ENCAP_LIMIT;
 	tnl->parm.hop_limit = 64;
 	tnl->parm.laddr = *local;
 	tnl->parm.raddr = *remote;
 	tnl->parm.link = link;
-
+	if(gre_info.gre_key_valid)
+	{
+	  tnl->parm.i_flags |= GRE_KEY;
+	  tnl->parm.o_flags |= GRE_KEY;
+	  tnl->parm.i_key = tnl->parm.o_key = gre_info.gre_key;
+	}
 	strcpy(ifr.ifr_name, basedev);
 	ifr.ifr_ifru.ifru_data = (void *)&tnl->parm;
 	if (ioctl(tnl_fd, SIOCADDTUNNEL, &ifr) < 0) {
@@ -303,6 +310,7 @@ int tunnel_add(struct in6_addr *local,
 {
 	struct mip6_tnl *tnl;
 	int res;
+	gre_info_type *gre_data;
 
 	pthread_mutex_lock(&tnl_lock);
 	if ((tnl = hash_get(&tnl_hash, local, remote)) != NULL) {
@@ -312,6 +320,18 @@ int tunnel_add(struct in6_addr *local,
 		     tnl->parm.name, tnl->ifindex,
 		     NIP6ADDR(local), NIP6ADDR(remote), tnl->users);
 	} else {
+
+		if(data != NULL && ext_tunnel_ops == NULL){
+		  gre_data = (gre_info_type *)data;
+		  gre_info.gre_key_valid = gre_data->gre_key_valid;
+		  gre_info.gre_key = gre_data->gre_key;
+		  TDBG("set GRE info to tunnel "
+		       "gre_valid:%d gre_key:%d\n",gre_info.gre_key_valid, gre_info.gre_key);
+		}
+		else
+		{
+		  TDBG("Data(GRE) is NULL");
+		}
 		if ((tnl = __tunnel_add(local, remote, link)) == NULL) {
 			TDBG("failed to create tunnel "
 			     "from %x:%x:%x:%x:%x:%x:%x:%x "
@@ -338,11 +358,11 @@ static int __tunnel_mod(struct mip6_tnl *tnl,
 			struct in6_addr *remote,
 			int link)
 {
-	struct ip6_tnl_parm parm;
+	struct ip6_tnl_parm2 parm;
 	struct ifreq ifr;
 
-	memset(&parm, 0, sizeof(struct ip6_tnl_parm));
-	parm.proto = IPPROTO_IPV6;
+	memset(&parm, 0, sizeof(struct ip6_tnl_parm2));
+	parm.proto = IPPROTO_GRE;
 	parm.flags = IP6_TNL_F_MIP6_DEV|IP6_TNL_F_IGN_ENCAP_LIMIT;
 	parm.hop_limit = 64;
 	parm.laddr = *local;
@@ -358,7 +378,7 @@ static int __tunnel_mod(struct mip6_tnl *tnl,
 		return -1;
 	}
 	hash_delete(&tnl_hash, &tnl->parm.laddr, &tnl->parm.raddr);
-	memcpy(&tnl->parm, &parm, sizeof(struct ip6_tnl_parm));
+	memcpy(&tnl->parm, &parm, sizeof(struct ip6_tnl_parm2));
 	if (hash_add(&tnl_hash, tnl, &tnl->parm.laddr, &tnl->parm.raddr) < 0) {
 		free(tnl);
 		return -1;

@@ -23,6 +23,9 @@
 #    include "mh.h"
 //---------------------------------------------------------------------------------------------------------------------
 
+#define PMIP_IPV6_ADDR_LEN 16
+#define PMIP_MAC_ADDR_LEN  6
+
 /*
 * Mobility Option TLV data structure
 *New options defined for Proxy BU & BA
@@ -49,6 +52,12 @@ typedef struct {
 	__u32				second;
 } ip6mnid_t;
 
+/*! \struct  ip6mnid_t
+* \brief Contain a mobile node identifier.
+*/
+typedef struct {
+	uint8_t 	  mac_addr[PMIP_MAC_ADDR_LEN];
+} ip6mnid_mac_t;
 
 /*! \struct  ip6ts_t
 * \brief Timestamp structure.
@@ -66,7 +75,7 @@ struct ip6_mh_opt_mobile_node_identifier_t {
     __u8                ip6mnid_type;   /*!< \brief MN-ID-OPTION-TYPE has been assigned value 8 by the IANA. It is an  8-bit identifier of the type mobility option.*/
     __u8                ip6mnid_len;    /*!< \brief 8-bit unsigned integer, representing the length in octets of the Subtype and Identifier fields.*/
     __u8                ip6mnid_subtype;/*!< \brief Mobile interface identifier subtype .*/
-    ip6mnid_t           ip6mnid_id;     /*!< \brief Mobile interface identifier (NOT RFC4283).*/
+    ip6mnid_mac_t       ip6mnid_id;     /*!< \brief Mobile interface identifier (MAC address).*/
 } __attribute__ ((__packed__));
 typedef struct ip6_mh_opt_mobile_node_identifier_t ip6_mh_opt_mobile_node_identifier_t;
 
@@ -115,6 +124,16 @@ struct ip6_mh_opt_handoff_indicator_t {
     __u8                ip6hi_hi;       /*!< \brief A 8-bit field containing the handoff indicator.*/
 } __attribute__ ((__packed__));
 typedef struct ip6_mh_opt_handoff_indicator_t ip6_mh_opt_handoff_indicator_t;
+
+
+struct ip6_mh_opt_gre_key_t {
+    __u8                ip6gre_type;     /*!< \brief Option type, value is 33.*/
+    __u8                ip6gre_len;      /*!< \brief 8-bit unsigned integer indicating the length of the option in octets, excluding the type and length fields. This field MUST be set to 2.*/
+    __u16               ip6gre_reserved; /*!< \brief Field unused for now, must be set to 0.*/
+    __u32               ip6gre_key;       /*!< \brief A 32-bit field containing the GRE Key value*/
+} __attribute__ ((__packed__));
+typedef struct ip6_mh_opt_gre_key_t ip6_mh_opt_gre_key_t;
+
 
 /*! \struct  ip6_mh_handoff_indicator_t
 * \brief Mobility Option TLV data structure: Handoff Indicator Option (RFC5213).
@@ -178,6 +197,7 @@ typedef struct msg_info_t {
 	int							iif;				/*!< \brief Interface identifier.*/
 	uint32_t					msg_event;			/*!< \brief Type of event received: hasDEREG hasWLCCP hasRS hasNA hasNS hasPBU hasPBA hasPBREQ hasPBRES */
 	struct in6_addr				mn_iid;				/*!< \brief Mobile node IID.*/
+	struct in6_addr	            mn_hw_address;		/*!< \brief MAC ADDR */
 	struct in6_addr				mn_addr;			/*!< \brief Full mobile node address */
 	struct in6_addr				mn_prefix;			/*!< \brief Network Address Prefix for MN */
 	struct in6_addr				mn_serv_mag_addr;	/*!< \brief Serving MAG Address */
@@ -195,6 +215,8 @@ typedef struct msg_info_t {
 	struct in6_addr				ns_target;			/*!< \brief Route optimization or flow control: Neighbour solicitation target*/
 	int							is_dad;				/*!< \brief Route optimization or flow control: is NS used for DAD process?*/
 	int							hoplimit;			/*!< \brief Route optimization or flow control: Hop limit*/
+	uint8_t						gre_key_valid;		/*!< \brief Gre Key info valid or not */
+	uint32_t					gre_key;			/*!< \brief GRE Key value info */
 } msg_info_t;
 #endif
 /*@}*/

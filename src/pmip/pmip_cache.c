@@ -99,7 +99,7 @@ void init_iface_ra()
 	router_ad_iface.AdvRetransTimer = DFLT_AdvRetransTimer;
 	router_ad_iface.AdvDefaultLifetime = 6000;
 	router_ad_iface.AdvManagedFlag = 0;
-	router_ad_iface.AdvOtherConfigFlag = 0;
+	router_ad_iface.AdvOtherConfigFlag = 1;
 	// default values for Prefix.
 	router_ad_iface.Adv_Prefix.AdvOnLinkFlag = DFLT_AdvOnLinkFlag;
 	router_ad_iface.Adv_Prefix.AdvAutonomousFlag = DFLT_AdvAutonomousFlag;
@@ -306,3 +306,20 @@ int pmip_cache_iterate(int (*func) (void *, void *), void *arg)
 	}
 	return err;
 }
+
+int pmip_cache_iterate_ext(int (*func) (void *, void *, void *), void *arg, void * usr_data)
+{
+	int err;
+	int mutex_return_code;
+	mutex_return_code = pthread_rwlock_rdlock(&pmip_lock);
+	if (mutex_return_code != 0) {
+		dbg("pthread_rwlock_rdlock(&pmip_lock) %s\n", strerror(mutex_return_code));
+	}
+	err = hash_iterate_ext(&g_pmip_hash, func, arg, usr_data);
+	mutex_return_code = pthread_rwlock_unlock(&pmip_lock);
+	if (mutex_return_code != 0) {
+		dbg("pthread_rwlock_unlock(&pmip_lock) %s\n", strerror(mutex_return_code));
+	}
+	return err;
+}
+

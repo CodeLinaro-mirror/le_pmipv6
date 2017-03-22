@@ -30,7 +30,7 @@ int lma_setup_route(struct in6_addr *pmip6_addr, int tunnel)
     int res = 0;
     if (conf.TunnelingEnabled) {
     dbg("Forward: Add new route for %x:%x:%x:%x:%x:%x:%x:%x in table %d\n", NIP6ADDR(pmip6_addr), RT6_TABLE_MIP6);
-    res = route_add(tunnel, RT6_TABLE_MIP6, RTPROT_MIP, 0, IP6_RT_PRIO_MIP6_FWD, &in6addr_any, 0, pmip6_addr, 128, NULL);
+    res = route_add(tunnel, RT6_TABLE_MIP6, RTPROT_MIP, 0, IP6_RT_PRIO_MIP6_FWD, &in6addr_any, 0, pmip6_addr, 64, NULL);
     }
     return res;
 }
@@ -41,7 +41,7 @@ int lma_remove_route(struct in6_addr *pmip6_addr, int tunnel)
     if (conf.TunnelingEnabled) {
         //Delete existing rule for the deleted MN
         dbg("Delete old route for: %x:%x:%x:%x:%x:%x:%x:%x from table %d\n", NIP6ADDR(pmip6_addr), RT6_TABLE_MIP6);
-        res = route_del(tunnel, RT6_TABLE_MIP6, IP6_RT_PRIO_MIP6_FWD, &in6addr_any, 0, pmip6_addr, 128, NULL);
+        res = route_del(tunnel, RT6_TABLE_MIP6, IP6_RT_PRIO_MIP6_FWD, &in6addr_any, 0, pmip6_addr, 64, NULL);
     }
     return res;
 }
@@ -50,7 +50,7 @@ int lma_reg(pmip_entry_t * bce)
 {
     if (bce != NULL) {
         //create a tunnel between MAG and LMA && add a route for peer address.
-        bce->tunnel = pmip_tunnel_add(&conf.OurAddress, &bce->mn_serv_mag_addr, bce->link);
+        bce->tunnel = pmip_tunnel_add(&conf.OurAddress, &bce->mn_serv_mag_addr, bce->link, bce->gre_key_valid, bce->gre_key);
         lma_setup_route(get_mn_addr(bce), bce->tunnel);
         bce->status = 0;        //PBU was Accepted!
         //Add task for entry expiry.
@@ -89,11 +89,14 @@ int lma_reg_no_new_tunnel(pmip_entry_t * bce)
 //---------------------------------------------------------------------------------------------------------------------
 int lma_dereg(pmip_entry_t * bce, msg_info_t * info, int propagate)
 {
+	int usercount = 0;
 	if (bce != NULL) {
 		//Delete the Task
 		del_task(&bce->tqe);
 		//delete old route to old tunnel.
-		lma_remove_route(get_mn_addr(bce), bce->tunnel);
+		usercount = tunnel_getusers(bce->tunnel);
+		if(usercount <= 1)
+		  lma_remove_route(get_mn_addr(bce), bce->tunnel);
 		//decrement users of old tunnel.
 		pmip_tunnel_del(bce->tunnel);
 		if (propagate) {
@@ -118,6 +121,7 @@ int lma_dereg(pmip_entry_t * bce, msg_info_t * info, int propagate)
 int lma_update_binding_entry(pmip_entry_t * bce, msg_info_t * info)
 {
 	int result = 0;
+	int usercount = 0;
     if (bce != NULL) {
         if (info != NULL) {
             int result;
@@ -126,7 +130,7 @@ int lma_update_binding_entry(pmip_entry_t * bce, msg_info_t * info)
             dbg("Store Binding Entry\n");
             bce->our_addr = conf.OurAddress;
             bce->mn_suffix = info->mn_iid;
-            bce->mn_hw_address = EUI64_to_EUI48(info->mn_iid);
+            bce->mn_hw_address = info->mn_hw_address;
             dbg("searching for the prefix for a new BCE entry...\n");
             r_tmp = lma_mnid_hnp_map(bce->mn_hw_address, &result);
             if (result >= 0) {
@@ -140,7 +144,9 @@ int lma_update_binding_entry(pmip_entry_t * bce, msg_info_t * info)
                     } else if (!(IN6_ARE_ADDR_EQUAL(&bce->mn_serv_mag_addr, &info->src))) {
                         dbg("New serving MAG:  %x:%x:%x:%x:%x:%x:%x:%x  (Old MAG: %x:%x:%x:%x:%x:%x:%x:%x)\n", NIP6ADDR(&info->src), NIP6ADDR(&bce->mn_serv_mag_addr));
                         //delete old route to old tunnel.
-                        lma_remove_route(get_mn_addr(bce), bce->tunnel);
+                        usercount = tunnel_getusers(bce->tunnel);
+                        if(usercount <= 1)
+                           lma_remove_route(get_mn_addr(bce), bce->tunnel);
                         //decrement users of old tunnel.
                         pmip_tunnel_del(bce->tunnel);
                         dbg("Deleting the old tunnel \n");
@@ -153,7 +159,9 @@ int lma_update_binding_entry(pmip_entry_t * bce, msg_info_t * info)
                 } else {
                     dbg("Mobine node prefix changed, delete route, tunnel\n");
                     //delete old route to old tunnel.
-                    lma_remove_route(get_mn_addr(bce), bce->tunnel);
+                    usercount = tunnel_getusers(bce->tunnel);
+                    if(usercount <= 1)
+                       lma_remove_route(get_mn_addr(bce), bce->tunnel);
                     //decrement users of old tunnel.
                     pmip_tunnel_del(bce->tunnel);
                     dbg("Deleting the old tunnel \n");
@@ -164,7 +172,8 @@ int lma_update_binding_entry(pmip_entry_t * bce, msg_info_t * info)
             }
             bce->timestamp.first    = info->timestamp.first;
             bce->timestamp.second   = info->timestamp.second;
-            bce->mn_prefix          = info->mn_prefix;
+            if(!IN6_IS_ADDR_UNSPECIFIED(&info->mn_prefix))
+                bce->mn_prefix          = info->mn_prefix;
             bce->mn_addr            = info->mn_addr;
             bce->mn_link_local_addr = info->mn_link_local_addr;
             bce->mn_serv_mag_addr   = info->src;
@@ -173,6 +182,8 @@ int lma_update_binding_entry(pmip_entry_t * bce, msg_info_t * info)
             bce->n_rets_counter     = conf.MaxMessageRetransmissions;
             bce->seqno_in           = info->seqno;
             bce->link               = info->iif;
+            bce->gre_key_valid      = GRE_KEY_VALID;
+            bce->gre_key            = DEFAULT_GRE_KEY;
             dbg("Finished updating the binding cache\n");
             return result;
         } else {

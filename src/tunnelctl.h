@@ -2,6 +2,12 @@
 #ifndef __TUNNELCTL_H__
 #define __TUNNELCTL_H__ 1
 
+typedef struct
+{
+  uint8_t gre_key_valid;
+  uint32_t gre_key;
+}gre_info_type;
+
 int tunnel_add(struct in6_addr *local,
 	       struct in6_addr *remote,
 	       int link,

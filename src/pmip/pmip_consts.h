@@ -39,7 +39,8 @@
 #    define IP6_MHOPT_MOBILE_NODE_LINK_LAYER_IDENTIFIER 0x19   /* Mobile Node Link Local Identifier Option */
 #    define IP6_MHOPT_LINK_LOCAL_ADDRESS                0x1A   /* link local address */
 #    define IP6_MHOPT_TIME_STAMP                        0x1B   /* Timestamp */
-#    define IP6_MHOPT_PMIP_MAX                          IP6_MHOPT_TIME_STAMP
+#    define IP6_MHOPT_GRE_KEY                           0x21   /* GRE KEY */
+#    define IP6_MHOPT_PMIP_MAX                          IP6_MHOPT_GRE_KEY
 
 
 #    define IP6_MHOPT_HI_RESERVED                                                  0
@@ -59,6 +60,9 @@
 #    define IP6_MH_TYPE_PBREQ   8   /* Proxy Binding Request */
 #    define IP6_MH_TYPE_PBRES   9   /* Proxy Binding Response */
 
+#    define IP6_MH_OPT_GRE_KEY_LEN       6
+#    define IP6_MH_OPT_GRE_KEYLESS_LEN   2
+#    define IP6_MHOPT_MOBILE_NODE_IDENTIFIER_LEN 7
 
 //Define STATUS FLAGS for FSM.
 #    define hasDEREG        0x00000050  /* Has a DEREG */

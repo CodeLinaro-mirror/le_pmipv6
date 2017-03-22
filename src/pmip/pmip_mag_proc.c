@@ -29,24 +29,58 @@
 //---------------------------------------------------------------------------------------------------------------------
 void pmip_timer_retrans_pbu_handler(struct tq_elem *tqe);
 //---------------------------------------------------------------------------------------------------------------------
+
+static int pmip_cache_get_prefix_match(void *data, void *arg, void *usr_data)
+//---------------------------------------------------------------------------------------------------------------------
+{
+    pmip_entry_t *bce = (pmip_entry_t *) data;
+    assert(bce && arg && usr_data);
+
+    struct in6_addr * rcvd_prefix = (struct in6_addr *)arg;
+    struct in6_addr in_prefix;
+    uint8_t * prefix_match = (uint8_t *)usr_data;
+
+    *prefix_match = 0;
+    in_prefix = get_node_prefix(rcvd_prefix);
+
+    if(bce->type == BCE_PMIP &&
+       IN6_ARE_ADDR_EQUAL(&in_prefix, &bce->mn_prefix))
+    {
+      *prefix_match = 1;
+      dbg("#pmip_cache_get_prefix_match to prefix: %x:%x:%x:%x:%x:%x:%x:%x & prefix_match:%d \n",NIP6ADDR(&bce->mn_prefix), *prefix_match);
+      return 1;
+    }
+    return 0;
+}
+
+//---------------------------------------------------------------------------------------------------------------------
 int mag_setup_route(struct in6_addr *pmip6_addr, int downlink)
 {
     int res = 0;
+    uint8_t prefix_exist = 0;
+
     if (conf.TunnelingEnabled) {
+        pmip_cache_iterate_ext(pmip_cache_get_prefix_match, (void*)pmip6_addr, (void *)&prefix_exist);
+        if(prefix_exist == 1)
+        {
+          dbg("mag_setup_route: Matching prefix BCE entry exists. Do not Add setup rules\n", NIP6ADDR(pmip6_addr));
+          return 1;
+        }
+
         //add a rule for MN for uplink traffic from MN must query the TABLE for PMIP --> tunneled
         dbg("Uplink: Add new rule for tunneling src=%x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(pmip6_addr));
-        res = rule_add(NULL, RT6_TABLE_PMIP, IP6_RULE_PRIO_PMIP6_FWD, RTN_UNICAST, pmip6_addr, 128, &in6addr_any, 0, 0);
+        res = rule_add(NULL, RT6_TABLE_PMIP, IP6_RULE_PRIO_PMIP6_FWD, RTN_UNICAST, pmip6_addr, 64, &in6addr_any, 0, 0);
         if (res < 0) {
-            dbg("ERROR Add new rule for tunneling");
+            dbg("ERROR Add new rule for tunneling\n");
         }
         //add a route for downlink traffic through LMA (any src) ==> MN
         dbg("Downlink: Add new route for %x:%x:%x:%x:%x:%x:%x:%x in table %d\n", NIP6ADDR(pmip6_addr), RT6_TABLE_MIP6);
-        res |= route_add(downlink, RT6_TABLE_MIP6, RTPROT_MIP, 0, IP6_RT_PRIO_MIP6_FWD, &in6addr_any, 0, pmip6_addr, 128, NULL);
+        res |= route_add(downlink, RT6_TABLE_MIP6, RTPROT_MIP, 0, IP6_RT_PRIO_MIP6_FWD, &in6addr_any, 0, pmip6_addr, 64, NULL);
         if (res < 0) {
-            dbg("ERROR Add new rule for tunneling");
+            dbg("ERROR Add new rule for tunneling\n");
         }
     } else {
-        dbg("WARNING CANNOT ADD ROUTING RULES SINCE TUNNELING DISABLED IN CONFIG");
+        dbg("WARNING CANNOT ADD ROUTING RULES SINCE TUNNELING DISABLED IN CONFIG\n");
     }
     return res;
 }
@@ -54,21 +88,28 @@ int mag_setup_route(struct in6_addr *pmip6_addr, int downlink)
 int mag_remove_route(struct in6_addr *pmip6_addr, int downlink)
 {
     int res = 0;
+    uint8_t prefix_exist = 0;
     if (conf.TunnelingEnabled) {
+     pmip_cache_iterate_ext(pmip_cache_get_prefix_match, (void*)pmip6_addr, (void *)&prefix_exist);
+     if(prefix_exist == 1)
+     {
+       dbg("mag_remove_route: Matching prefix BCE entry exists. Do not remove setup rules\n", NIP6ADDR(pmip6_addr));
+       return 1;
+     }
         //Delete existing rule for the deleted MN
         dbg("Uplink: Delete old rule for tunneling src=%x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(pmip6_addr));
-        res = rule_del(NULL, RT6_TABLE_PMIP, IP6_RULE_PRIO_PMIP6_FWD, RTN_UNICAST, pmip6_addr, 128, &in6addr_any, 0, 0);
+        res = rule_del(NULL, RT6_TABLE_PMIP, IP6_RULE_PRIO_PMIP6_FWD, RTN_UNICAST, pmip6_addr, 64, &in6addr_any, 0, 0);
         if (res < 0) {
-            dbg("ERROR Del new rule for tunneling ");
+            dbg("ERROR Del new rule for tunneling \n");
         }
         //Delete existing route for the deleted MN
         dbg("Downlink: Delete old routes for: %x:%x:%x:%x:%x:%x:%x:%x from table %d\n", NIP6ADDR(pmip6_addr), RT6_TABLE_MIP6);
-        res |= route_del(downlink, RT6_TABLE_MIP6, IP6_RT_PRIO_MIP6_FWD, &in6addr_any, 0, pmip6_addr, 128, NULL);
+        res |= route_del(downlink, RT6_TABLE_MIP6, IP6_RT_PRIO_MIP6_FWD, &in6addr_any, 0, pmip6_addr, 64, NULL);
         if (res < 0) {
-            dbg("ERROR Del new rule for tunneling ");
+            dbg("ERROR Del new rule for tunneling\n");
         }
     } else {
-        dbg("WARNING CANNOT DELETE ROUTING RULES SINCE TUNNELING DISABLED IN CONFIG");
+        dbg("WARNING CANNOT DELETE ROUTING RULES SINCE TUNNELING DISABLED IN CONFIG\n");
     }
     return res;
 }
@@ -109,8 +150,8 @@ int mag_start_registration(pmip_entry_t * bce)
 
     // min 4 seconds, because lifetime is sent over the network in PBU divided by 4
     struct timespec lifetime = { 10, 0 };
-    mh_send_pbu(&addrs, bce, &lifetime, 0);
-    //mh_send_pbu(&addrs, bce, &conf.PBULifeTime, 0);
+   // mh_send_pbu(&addrs, bce, &lifetime, 0);
+    mh_send_pbu(&addrs, bce, &conf.PBULifeTime, 0);
     //add a new task for PBU retransmission.
     struct timespec expires;
     clock_gettime(CLOCK_REALTIME, &bce->add_time);
@@ -122,16 +163,13 @@ int mag_start_registration(pmip_entry_t * bce)
 //---------------------------------------------------------------------------------------------------------------------
 int mag_end_registration(pmip_entry_t * bce, int iif)
 {
-    //Change the BCE type.
-    bce->type = BCE_PMIP;
-    dbg("New PMIP cache entry type: %d\n", bce->type);
     //Reset the Retransmissions counter.
     bce->n_rets_counter = conf.MaxMessageRetransmissions;
     //Add task for entry expiry.
     dbg("Timer for Expiry is initialized: %d(s)!\n", bce->lifetime.tv_sec);
     pmip_cache_start(bce);
     //create a tunnel between MAG and LMA.
-    bce->tunnel = pmip_tunnel_add(&conf.OurAddress, &conf.LmaAddress, iif);
+    bce->tunnel = pmip_tunnel_add(&conf.OurAddress, &conf.LmaAddress, iif, bce->gre_key_valid, bce->gre_key);
     int usercount = tunnel_getusers(bce->tunnel);
     dbg("# of binding entries %d\n", usercount);
     if (usercount == 1) {
@@ -141,6 +179,10 @@ int mag_end_registration(pmip_entry_t * bce, int iif)
     mag_kickoff_ra(bce);
     dbg("Adding route for : %x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(get_mn_addr(bce)));
     mag_setup_route(get_mn_addr(bce), bce->link);
+    //Change the BCE type.
+    bce->type = BCE_PMIP;
+    dbg("New PMIP cache entry type: %d\n", bce->type);
+
     dbg("Out of setup route\n");
     return 0;
 }
@@ -285,7 +327,7 @@ int check_ip6_forwarding(void)
         dbg("Correct IPv6 forwarding sysctl branch not found, " "perhaps the kernel interface has changed?");
         return (0);     /* this is of advisory value only */
     }
-    if (value != 1) {
+    if (value < 1) {
         dbg("IPv6 forwarding setting is: %u, should be 1", value);
         return (-1);
     }
@@ -386,7 +428,7 @@ int mag_update_binding_entry(pmip_entry_t * bce, msg_info_t * info)
     dbg("Store binding entry\n");
     bce->our_addr = conf.OurAddress;
     bce->mn_suffix = info->mn_iid;
-    bce->mn_hw_address = EUI64_to_EUI48(info->mn_iid);
+    bce->mn_hw_address = info->mn_hw_address;
     bce->mn_prefix = info->mn_prefix;
     bce->mn_addr = info->mn_addr;
     bce->mn_link_local_addr = info->mn_link_local_addr;

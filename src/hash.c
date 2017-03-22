@@ -217,12 +217,34 @@ int hash_iterate(const struct hash *h, int (*func)(void *, void *), void *arg)
 	struct hash_entry *hptr, *nptr;
 
 	assert(func);
-	
+
 	for (i=0; i < h->buckets; i++) {
 		if((hptr = h->hash_buckets[i]) != NULL) {
 			while(hptr) {
 				nptr = hptr->next;
 				if ((err = func(hptr->data, arg)))
+					return err;
+				hptr = nptr;
+			}
+		}
+	}
+	return 0;
+}
+
+int hash_iterate_ext(const struct hash *h, int (*func)(void *, void *, void *),
+                        void *arg, void* usr_data)
+{
+	int err = 0;
+	int i;
+	struct hash_entry *hptr, *nptr;
+
+	assert(func);
+
+	for (i=0; i < h->buckets; i++) {
+		if((hptr = h->hash_buckets[i]) != NULL) {
+			while(hptr) {
+				nptr = hptr->next;
+				if ((err = func(hptr->data, arg, usr_data)))
 					return err;
 				hptr = nptr;
 			}

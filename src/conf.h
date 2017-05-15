@@ -7,103 +7,138 @@
 #include <net/if.h>
 #include "list.h"
 #include "pmgr.h"
+#define BASE4DEV "ip4gre1"
+
+
+
+typedef enum {
+	IP_FAMILY_ENUM_MIN_ENUM_VAL_V01 = -2147483647, /**< To force a 32 bit signed enum.  Do not change or use*/
+	IP_FAMILY_V4_V01 = 0x04, /**<  IPv4 version  */
+	IP_FAMILY_V6_V01 = 0x06, /**<  IPv6 version  */
+	IP_FAMILY_V4V6_V01 = 0x0A, /**<  Dual mode version  */
+	IP_FAMILY_ENUM_MAX_ENUM_VAL_V01 = 2147483647 /**< To force a 32 bit signed enum.  Do not change or use*/
+}ip_family_enum_v01;
+
+typedef enum {
+	PMIPV4_MODE_ENUM_MIN_ENUM_VAL_V01 = -2147483647, /**< To force a 32 bit signed enum.  Do not change or use*/
+	PMIPV4_MODE_CPE_V01 = 1, /**<  MIPV4 MODE is CPE  */
+	PMIPV4_MODE_SECONDARY_ROUTER_V01 = 2, /**<  PMIPV4 MODE is SECONDARY ROUTER  */
+	PMIPV4_MODE_ENUM_MAX_ENUM_VAL_V01 = 2147483647 /**< To force a 32 bit signed enum.  Do not change or use*/
+}pmipv4_mode_enum_v01;
+
+
 
 struct mip6_config {
-    /* Common options */
-    char            *config_file;
+	/* Common options */
+	char            *config_file;
+	ip_family_enum_v01              pmip_mode_type;
+	pmipv4_mode_enum_v01              pmipv4_work_mode_type;
+	ip_family_enum_v01    pmip_tunnel_mode;
+	struct in_addr dhcp_start_ip;
+	struct in_addr dhcp_end_ip;
+	uint32_t current_ip;
+	struct in_addr dhcp_sub_mask;
+	int is_dnsmasq_started_on_pba;
+	int is_dmnp_prefix_verified;
 #ifdef ENABLE_VT
-    char            *vt_hostname;
-    char            *vt_service;
+	char            *vt_hostname;
+	char            *vt_service;
 #endif
-    unsigned int    mip6_entity;
-    unsigned int    debug_level;
-    char *          debug_log_file;
-    struct pmgr_cb  pmgr;
-    struct list_head net_ifaces;
-    struct list_head bind_acl;
-    uint8_t         DefaultBindingAclPolicy;
-    char            NonVolatileBindingCache;
+	unsigned int    mip6_entity;
+	unsigned int    debug_level;
+	char *          debug_log_file;
+	struct pmgr_cb  pmgr;
+	struct list_head net_ifaces;
+	struct list_head bind_acl;
+	uint8_t         DefaultBindingAclPolicy;
+	char            NonVolatileBindingCache;
 
-    /* IPsec options */
-    char            KeyMngMobCapability;
-    char            UseMnHaIPsec;
-    struct list_head ipsec_policies;
+	/* IPsec options */
+	char            KeyMngMobCapability;
+	char            UseMnHaIPsec;
+	struct list_head ipsec_policies;
 
-    /* MN options */
-    unsigned int    MnMaxHaBindingLife;
-    unsigned int    MnMaxCnBindingLife;
-    unsigned int    MnRouterProbes;
-    struct timespec MnRouterProbeTimeout_ts;
-    struct timespec InitialBindackTimeoutFirstReg_ts;
-    struct timespec InitialBindackTimeoutReReg_ts;
-    struct list_head home_addrs;
-    char *          MoveModulePath;
-    uint16_t        CnBuAck;
-    char            DoRouteOptimizationMN;
-    char            MnUseAllInterfaces;
-    char            MnDiscardHaParamProb;
-    char            SendMobPfxSols;
-    char            OptimisticHandoff;
+	/* MN options */
+	unsigned int    MnMaxHaBindingLife;
+	unsigned int    MnMaxCnBindingLife;
+	unsigned int    MnRouterProbes;
+	struct timespec MnRouterProbeTimeout_ts;
+	struct timespec InitialBindackTimeoutFirstReg_ts;
+	struct timespec InitialBindackTimeoutReReg_ts;
+	struct list_head home_addrs;
+	char *          MoveModulePath;
+	uint16_t        CnBuAck;
+	char            DoRouteOptimizationMN;
+	char            MnUseAllInterfaces;
+	char            MnDiscardHaParamProb;
+	char            SendMobPfxSols;
+	char            OptimisticHandoff;
 
-    /* HA options */
-    char            SendMobPfxAdvs;
-    char            SendUnsolMobPfxAdvs;
-    unsigned int    MaxMobPfxAdvInterval;
-    unsigned int    MinMobPfxAdvInterval;
-    unsigned int    HaMaxBindingLife;
+	/* HA options */
+	char            SendMobPfxAdvs;
+	char            SendUnsolMobPfxAdvs;
+	unsigned int    MaxMobPfxAdvInterval;
+	unsigned int    MinMobPfxAdvInterval;
+	unsigned int    HaMaxBindingLife;
 
-    /* CN options */
-    char            DoRouteOptimizationCN;
+	/* CN options */
+	char            DoRouteOptimizationCN;
 
-    /* PMIP global options */
-    unsigned int    RFC5213TimestampBasedApproachInUse;
-    unsigned int    RFC5213MobileNodeGeneratedTimestampInUse;
-    struct in6_addr RFC5213FixedMAGLinkLocalAddressOnAllAccessLinks;
-    struct in6_addr RFC5213FixedMAGLinkLayerAddressOnAllAccessLinks;
+	/* PMIP global options */
+	unsigned int    RFC5213TimestampBasedApproachInUse;
+	unsigned int    RFC5213MobileNodeGeneratedTimestampInUse;
+	struct in6_addr RFC5213FixedMAGLinkLocalAddressOnAllAccessLinks;
+	struct in6_addr RFC5213FixedMAGLinkLayerAddressOnAllAccessLinks;
 
-    /* PMIP LMA options */
-    struct timespec RFC5213MinDelayBeforeBCEDelete;
-    struct timespec RFC5213MaxDelayBeforeNewBCEAssign;
-    struct timespec RFC5213TimestampValidityWindow;
+	/* PMIP LMA options */
+	struct timespec RFC5213MinDelayBeforeBCEDelete;
+	struct timespec RFC5213MaxDelayBeforeNewBCEAssign;
+	struct timespec RFC5213TimestampValidityWindow;
 
-    /* PMIP MAG options */
-    unsigned int    RFC5213EnableMAGLocalRouting;
-    struct in6_addr AllLmaMulticastAddress;     // All-LMA Multicast Address (Eurecom' Extension for SPMIPv6).
-    struct in6_addr LmaAddress;                 // address of LMA, PMIP network side.
-    char*           LmaPmipNetworkDevice;       // PMIP LMA device, PMIP network side.
-    struct in6_addr LmaCoreNetworkAddress;      // address of LMA, core network side.
-    char*           LmaCoreNetworkDevice;       // PMIP LMA device, core network side.
-    struct in6_addr MagAddressIngress;          // ingress address of MAG.
-    struct in6_addr MagAddressEgress;           // egress address of MAG.
-    struct in6_addr Mag1AddressIngress;         // ingress address of MAG1.
-    struct in6_addr Mag1AddressEgress;          // egress address of MAG1.
-    struct in6_addr Mag2AddressIngress;         // ingress address of MAG1.
-    struct in6_addr Mag2AddressEgress;          // egress address of MAG1.
-    struct in6_addr Mag3AddressIngress;         // ingress address of MAG1.
-    struct in6_addr Mag3AddressEgress;          // egress address of MAG1.
-    char*           MagDeviceIngress;           // ingress device.
-    char*           MagDeviceEgress;            // egress device.
-    struct in6_addr OurAddress;
-    struct in6_addr HomeNetworkPrefix;          // home network address common for domain!
-    struct timespec PBULifeTime;                // Life time of Proxy Binding Update.
-    struct timespec PBALifeTime;                // Life time MR side.
-    struct timespec RetransmissionTimeOut;      // Time-out before retransmission of a message.
-    int             MaxMessageRetransmissions;  //indicates the maximum number of message retransmissions
-    char            TunnelingEnabled;
-    char            DynamicTunnelingEnabled;
-    char*           RadiusClientConfigFile;
-    char*           RadiusPassword;
-    char*           PcapSyslogAssociationGrepString;
-    char*           PcapSyslogDeAssociationGrepString;
+	/* PMIP MAG options */
+	unsigned int    RFC5213EnableMAGLocalRouting;
+	struct in6_addr AllLmaMulticastAddress;     // All-LMA Multicast Address (Eurecom' Extension for SPMIPv6).
+	struct in6_addr LmaAddress;                 // address of LMA, PMIP network side.
+	struct in_addr LmaV4Address;                 // address of LMA, PMIP network side.
+	struct in_addr PrimaryDns;                   // primary dns server.
+	struct in_addr PMIPV4SecRouterDMNPPrefix;
+	int PMIPV4SecRouterdmnpPrefixLen;
+	char*           LmaPmipNetworkDevice;       // PMIP LMA device, PMIP network side.
+	struct in6_addr LmaCoreNetworkAddress;      // address of LMA, core network side.
+	char*           LmaCoreNetworkDevice;       // PMIP LMA device, core network side.
+	struct in6_addr MagAddressIngress;          // ingress address of MAG.
+	struct in6_addr MagAddressEgress;           // egress address of MAG.
+	struct in_addr  Magv4AddressIngress;          // ingress v4 address of MAG.
+	struct in_addr  Magv4AddressEgress;           // egres v4s address of MAG.
+	struct in6_addr Mag1AddressIngress;         // ingress address of MAG1.
+	struct in6_addr Mag1AddressEgress;          // egress address of MAG1.
+	struct in6_addr Mag2AddressIngress;         // ingress address of MAG1.
+	struct in6_addr Mag2AddressEgress;          // egress address of MAG1.
+	struct in6_addr Mag3AddressIngress;         // ingress address of MAG1.
+	struct in6_addr Mag3AddressEgress;          // egress address of MAG1.
+	char*           MagDeviceIngress;           // ingress device.
+	char*           MagDeviceEgress;            // egress device.
+	struct in6_addr OurAddress;
+	struct in6_addr HomeNetworkPrefix;          // home network address common for domain!
+	struct timespec PBULifeTime;                // Life time of Proxy Binding Update.
+	struct timespec PBALifeTime;                // Life time MR side.
+	struct timespec RetransmissionTimeOut;      // Time-out before retransmission of a message.
+	int             MaxMessageRetransmissions;  //indicates the maximum number of message retransmissions
+	char            TunnelingEnabled;
+	char            DynamicTunnelingEnabled;
+	char*           RadiusClientConfigFile;
+	char*           RadiusPassword;
+	char*           PcapSyslogAssociationGrepString;
+	char*           PcapSyslogDeAssociationGrepString;
 };
 
 struct net_iface {
-    struct list_head list;
-    char name[IF_NAMESIZE];
-    int ifindex;
-    int is_rtr;
-    int mip6_if_entity;
-    int mn_if_preference;
+	struct list_head list;
+	char name[IF_NAMESIZE];
+	int ifindex;
+	int is_rtr;
+	int mip6_if_entity;
+	int mn_if_preference;
 };
 
 extern struct mip6_config conf;
@@ -115,66 +150,73 @@ extern struct mip6_config conf;
 #define MIP6_ENTITY_MAG 3
 #define MIP6_ENTITY_LMA 4
 
+int ds_system_call
+(
+ const char   *command,
+ unsigned int  cmdlen
+ );
+
+
 static inline int is_cn(void)
 {
-    return conf.mip6_entity == MIP6_ENTITY_CN;
+	return conf.mip6_entity == MIP6_ENTITY_CN;
 }
 
 static inline int is_mn(void)
 {
-    return conf.mip6_entity == MIP6_ENTITY_MN;
+	return conf.mip6_entity == MIP6_ENTITY_MN;
 }
 
 static inline int is_ha(void)
 {
-    return conf.mip6_entity == MIP6_ENTITY_HA;
+	return conf.mip6_entity == MIP6_ENTITY_HA;
 }
 
 static inline int is_mag(void)
 {
-    return conf.mip6_entity == MIP6_ENTITY_MAG;
+	return conf.mip6_entity == MIP6_ENTITY_MAG;
 }
 
 static inline int is_lma(void)
 {
-    return conf.mip6_entity == MIP6_ENTITY_LMA;
+	return conf.mip6_entity == MIP6_ENTITY_LMA;
 }
 
 static inline int is_if_entity_set(struct net_iface *i)
 {
-    return i->mip6_if_entity != MIP6_ENTITY_NO;
+	return i->mip6_if_entity != MIP6_ENTITY_NO;
 
 }
 
 static inline int is_if_cn(struct net_iface *i)
 {
-    return (is_cn() &&
-            (!is_if_entity_set(i) || i->mip6_if_entity == MIP6_ENTITY_CN));
+	return (is_cn() &&
+			(!is_if_entity_set(i) || i->mip6_if_entity == MIP6_ENTITY_CN));
 
 }
 
 static inline int is_if_mn(struct net_iface *i)
 {
-    return (is_mn() &&
-            (!is_if_entity_set(i) || i->mip6_if_entity == MIP6_ENTITY_MN));
+	return (is_mn() &&
+			(!is_if_entity_set(i) || i->mip6_if_entity == MIP6_ENTITY_MN));
 }
 
 static inline int is_if_ha(struct net_iface *i)
 {
-    return (is_ha() &&
-            (!is_if_entity_set(i) || i->mip6_if_entity == MIP6_ENTITY_HA));
+	return (is_ha() &&
+			(!is_if_entity_set(i) || i->mip6_if_entity == MIP6_ENTITY_HA));
 }
 
 static inline int is_if_lma(struct net_iface *i)
 {
-    return (is_lma() &&
-            (!is_if_entity_set(i) || i->mip6_if_entity == MIP6_ENTITY_LMA));
+	return (is_lma() &&
+			(!is_if_entity_set(i) || i->mip6_if_entity == MIP6_ENTITY_LMA));
 }
 
 static inline int is_if_mag(struct net_iface *i)
 {
-    return (is_mag() &&
-            (!is_if_entity_set(i) || i->mip6_if_entity == MIP6_ENTITY_MAG));
+	return (is_mag() &&
+			(!is_if_entity_set(i) || i->mip6_if_entity == MIP6_ENTITY_MAG));
 }
 
 int conf_parse(struct mip6_config *c, int argc, char **argv);

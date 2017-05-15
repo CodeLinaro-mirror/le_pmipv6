@@ -100,5 +100,6 @@ protected_pmip_hnp_cache(int pmip_mn_to_hnp_cache_init(void);)
 * \note   Called in MAG only. If the association is not found in the map, then the radius server is queried for a network prefix, once the response has been received, if successful, the association is stored in the cach, so the radius server will not be queried for this mobile node on this MAG, even if the mobile node leaves the geographical area covered by the MAG and re-enter again.
 */
 protected_pmip_hnp_cache(struct in6_addr mnid_hnp_map(struct in6_addr mnid, int *aaa_result);)
+
 #endif
 /** @}*/

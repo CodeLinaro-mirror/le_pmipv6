@@ -41,6 +41,8 @@
 #    define PROC_SYS_IP6_BASEREACHTIME "/proc/sys/net/ipv6/neigh/%s/base_reachable_time"
 #    define PROC_SYS_IP6_RETRANSTIMER_MS "/proc/sys/net/ipv6/neigh/%s/retrans_time_ms"
 #    define PROC_SYS_IP6_RETRANSTIMER "/proc/sys/net/ipv6/neigh/%s/retrans_time"
+#define IP_GRE_TUNNEL "ip6gre1"
+
 
 #    ifndef IPV6_ADDR_LINKLOCAL
 #        define IPV6_ADDR_LINKLOCAL 0x0020U

@@ -111,6 +111,7 @@ static void uerror(const char *fmt, ...) {
 %union {
 	char *string;
 	struct in6_addr addr;
+	struct in_addr addrv4;
 	struct in6_addr macaddr;
 	char bool;
 	unsigned int num;
@@ -120,6 +121,7 @@ static void uerror(const char *fmt, ...) {
 
 %token <string> QSTRING
 %token <addr>	ADDR
+%token <addrv4>	ADDRV4
 %token <macaddr>	MACADDR
 %token <bool>	BOOL
 %token <num>	NUMBER
@@ -226,7 +228,12 @@ static void uerror(const char *fmt, ...) {
 %token      RADIUSCLIENTCONFIGFILE
 %token      PCAPSYSLOGASSOCIATIONGREPSTRING
 %token      PCAPSYSLOGDEASSOCIATIONGREPSTRING
-
+%token <addrv4>	LMAV4ADDRESS
+%token <addrv4>	PRIMARYDNS
+%token <addrv4>	MAGV4ADDRESSINGRESS
+%token <addrv4>	MAGV4ADDRESSEGRESS
+%token <addrv4>	 PMIPV4SECROUTERDMNPPREFIX
+%token 	 PMIPV4SECROUTERDMNPPREFIXLEN
 %token		INV_TOKEN
 
 %type <num>	ipsectype
@@ -749,6 +756,10 @@ proxymiplmaopt	: LMAADDRESS ADDR ';'
 		{
 			memcpy(&conf.LmaAddress, &$2, sizeof(struct in6_addr));
 		}
+		| LMAV4ADDRESS ADDRV4 ';'
+		{
+			conf.LmaV4Address = $2;
+		}
 		| LMAPMIPNETWORKDEVICE QSTRING ';'
 		{
 			conf.LmaPmipNetworkDevice = $2;
@@ -883,6 +894,30 @@ proxymipmagopts	: proxymipmagopt
 proxymipmagopt	: LMAADDRESS ADDR ';'
 		{
 			memcpy(&conf.LmaAddress, &$2, sizeof(struct in6_addr));
+		}
+		| LMAV4ADDRESS ADDRV4 ';'
+		{
+			conf.LmaV4Address = $2;
+		}
+		| PRIMARYDNS ADDRV4 ';'
+		{
+			conf.PrimaryDns = $2;
+		}
+		| MAGV4ADDRESSINGRESS ADDRV4 ';'
+		{
+			conf.Magv4AddressIngress = $2;
+		}
+		| MAGV4ADDRESSEGRESS ADDRV4 ';'
+		{
+			conf.Magv4AddressEgress = $2;
+		}
+		| PMIPV4SECROUTERDMNPPREFIX ADDRV4 ';'
+		{
+			conf.PMIPV4SecRouterDMNPPrefix = $2;
+		}
+		| PMIPV4SECROUTERDMNPPREFIXLEN NUMBER ';'
+		{
+			conf.PMIPV4SecRouterdmnpPrefixLen = $2;
 		}
 		| RFC5213TIMESTAMPBASEDAPPROACHINUSE BOOL ';'
 		{

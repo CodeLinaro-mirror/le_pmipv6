@@ -167,7 +167,7 @@ private_pmip_msgs(int mh_create_opt_src_mag_addr(struct iovec *iov, struct in6_a
 * \param[in]  iif  Interface identifier.
 * \return   Zero.
 */
-protected_pmip_msgs(int mh_pbu_parse(msg_info_t * info, struct ip6_mh_binding_update *pbu, ssize_t len, const struct in6_addr_bundle *in_addrs, int iif);)
+protected_pmip_msgs(int mh_pbu_parse(msg_info_t * info, struct ip6_mh_binding_update *pbu, ssize_t len, void *addrs, int iif);)
 /*! \fn int mh_pba_parse(msg_info_t * , struct ip6_mh_binding_ack *, ssize_t , const struct in6_addr_bundle *, int)
 * \brief Parse PBA message.
 * \param[in-out]   info Storage containing all necessary informations about the message received.
@@ -217,7 +217,7 @@ protected_pmip_msgs(int pmip_mh_send(const struct in6_addr_bundle *addrs, const 
 * \param[in]  oif  Outgoing interface identifier.
 * \return   Zero if success, negative value otherwise.
 */
-protected_pmip_msgs(int mh_send_pbu(const struct in6_addr_bundle *addrs, pmip_entry_t * bce, struct timespec *lifetime, int oif);)
+protected_pmip_msgs(int mh_send_pbu(void *addrs, pmip_entry_t * bce, struct timespec *lifetime, int oif);)
 /*! \fn int mh_send_pba(const struct in6_addr_bundle *, pmip_entry_t *, struct timespec *, int)
 * \brief Send PBA message.
 * \param[in]  addrs  Source and destination address of the message.
@@ -226,6 +226,6 @@ protected_pmip_msgs(int mh_send_pbu(const struct in6_addr_bundle *addrs, pmip_en
 * \param[in]  oif  Outgoing interface identifier.
 * \return   Zero if success, negative value otherwise.
 */
-protected_pmip_msgs(int mh_send_pba(const struct in6_addr_bundle *addrs, pmip_entry_t * bce, struct timespec *lifetime, int oif);)
+protected_pmip_msgs(int mh_send_pba(void *addrs, pmip_entry_t * bce, struct timespec *lifetime, int oif);)
 #endif
 /** @}*/

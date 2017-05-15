@@ -72,7 +72,9 @@ pmip6d_SOURCES = pmgr.c pmgr.h defpath.h \
         ./pmip/pmip_pcap.h \
         ./pmip/pmip_tunnel.c \
         ./pmip/pmip_tunnel.h \
-        ./pmip/pmip_types.h
+        ./pmip/pmip_types.h \
+        ./pmip/pmipv4_conf.c \
+        ./pmip/pmipv4_conf.h
 
 if ENABLE_VT
 pmip6d_SOURCES += vt.c vt.h

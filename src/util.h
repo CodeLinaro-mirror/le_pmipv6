@@ -175,6 +175,9 @@ static inline int in6_is_addr_routable_unicast(const struct in6_addr *a)
         ntohs((addr)->s6_addr16[6]), \
         ntohs((addr)->s6_addr16[7])
 
+#define NIP4ADDR(addr) \
+        ntohl((addr)->s_addr)
+
 /**
  * free_iov_data - free vector data
  * @iov: vector array

@@ -83,6 +83,7 @@ addr1		{hexdec}{1,4}":"({hexdec}{1,4}":")*(":"{hexdec}{1,4})+
 addr2		{hexdec}{1,4}(":"{hexdec}{1,4}){0,6}"::"
 addr3		({hexdec}{1,4}":"){7}{hexdec}{1,4}
 addr		({addr1}|{addr2}|{addr3}|"::")
+addrv4		({number}"."{number}"."{number}"."{number})
 macaddr1	({hexdec}{1,2}":"){5}{hexdec}{1,2}
 macaddr2	({hexdec}{1,2}":"{hexdec}{1,2}":"{hexdec}{1,2}":"{hexdec}{1,2}":"{hexdec}{1,2}":"{hexdec}{1,2})
 macaddr		({macaddr1}|{macaddr2})
@@ -169,11 +170,17 @@ RFC5213MaxDelayBeforeNewBCEAssign		{ return RFC5213MAXDELAYBEFORENEWBCEASSIGN; }
 RFC5213TimestampValidityWindow			{ return RFC5213TIMESTAMPVALIDITYWINDOW; }
 RFC5213EnableMAGLocalRouting			{ return RFC5213ENABLEMAGLOCALROUTING; }
 LmaAddress					{ return LMAADDRESS; }
+LmaV4Address					{ return LMAV4ADDRESS; }
+PrimaryDns					{ return PRIMARYDNS; }
+PMIPV4SecRouterDMNPPrefix					{ return PMIPV4SECROUTERDMNPPREFIX; }
+PMIPV4SecRouterdmnpPrefixLen					{ return PMIPV4SECROUTERDMNPPREFIXLEN; }
 LmaPmipNetworkDevice                            { return LMAPMIPNETWORKDEVICE; }
 LmaCoreNetworkAddress                           { return LMACORENETWORKADDRESS; }
 LmaCoreNetworkDevice                            { return LMACORENETWORKDEVICE; }
 MagAddressIngress				{ return MAGADDRESSINGRESS; }
 MagAddressEgress				{ return MAGADDRESSEGRESS; }
+Magv4AddressIngress				{ return MAGV4ADDRESSINGRESS; }
+Magv4AddressEgress				{ return MAGV4ADDRESSEGRESS; }
 Mag1AddressIngress				{ return MAG1ADDRESSINGRESS; }
 Mag1AddressEgress				{ return MAG1ADDRESSEGRESS; }
 Mag2AddressIngress				{ return MAG2ADDRESSINGRESS; }
@@ -208,6 +215,17 @@ internal					{ return INTERNAL; }
 				return INV_TOKEN;
 			}
 			return ADDR;
+		}
+
+{addrv4}		{
+			int i;
+fprintf(stderr, "str=%s\n",yytext);
+			i = inet_pton(AF_INET, yytext, &yylval.addrv4);
+
+			if (i < 1) {
+				return INV_TOKEN;
+			}
+			return ADDRV4;
 		}
 
 {macaddr}	{

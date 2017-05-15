@@ -1,12 +1,12 @@
 /*! \file pmip_consts.h
-* \brief Describe all constants for pmip
-* \author OpenAir3 Group
-* \date 12th of October 2010
-* \version 1.0
-* \company Eurecom
-* \project OpenAirInterface
-* \email: openair3@eurecom.fr
-*/
+ * \brief Describe all constants for pmip
+ * \author OpenAir3 Group
+ * \date 12th of October 2010
+ * \version 1.0
+ * \company Eurecom
+ * \project OpenAirInterface
+ * \email: openair3@eurecom.fr
+ */
 
 /** \defgroup CONSTANTS CONSTANTS
  * \ingroup PMIP6D
@@ -21,13 +21,13 @@
 #    define MAX_MOBILES 64
 
 /*
-* Mobility Header Message Option Types
-* new mobility header options types defined
-*/
+ * Mobility Header Message Option Types
+ * new mobility header options types defined
+ */
 #    define IP6_MHOPT_MOBILE_NODE_IDENTIFIER            0x08   /* Mobile Node Identifier Option */
 /*
-* Mobility Header Message Option Types
-*/
+ * Mobility Header Message Option Types
+ */
 #    define IP6_MHOPT_DST_MN_ADDR                       0x0B   /* Source Mobile Node address */
 #    define IP6_MHOPT_SERV_MAG_ADDR                     0x0C   /* Serving MAG address */
 #    define IP6_MHOPT_SERV_LMA_ADDR                     0x0D   /* Source Mobile Node address */
@@ -40,7 +40,13 @@
 #    define IP6_MHOPT_LINK_LOCAL_ADDRESS                0x1A   /* link local address */
 #    define IP6_MHOPT_TIME_STAMP                        0x1B   /* Timestamp */
 #    define IP6_MHOPT_GRE_KEY                           0x21   /* GRE KEY */
-#    define IP6_MHOPT_PMIP_MAX                          IP6_MHOPT_GRE_KEY
+//pmipv4 options
+#define IPV4_HOME_ADDR_REQUEST_OPTION 0x24
+#define IPV4_HOME_ADDR_REPLY_OPTION 0x25
+#define IPV4_HOME_DEFAULT_ROUTER_OPTION 0x26
+#define IPV4_DMNP_PREFIX_OPTION 0x37
+
+#    define IP6_MHOPT_PMIP_MAX                          IPV4_DMNP_PREFIX_OPTION
 
 
 #    define IP6_MHOPT_HI_RESERVED                                                  0
@@ -76,5 +82,7 @@
 #    define hasPBREQ        0x00000002  /* Has a PBRR */
 #    define hasPBRES        0x00000001  /* Has a PBRE */
 #    define PREFIX_LENGTH   64
+
+
 #endif
 /** @}*/

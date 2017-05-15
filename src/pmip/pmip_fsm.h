@@ -59,5 +59,7 @@ protected_pmip_fsm(int lma_fsm(msg_info_t *info);)
 \brief Global var mutex on the MAG finite state machine.
 */
 private_pmip_fsm(pthread_rwlock_t fsm_lock;)
+private_pmip_fsm(pthread_rwlock_t fsm_v4_lock;)
+
 #endif
 /** @}*/

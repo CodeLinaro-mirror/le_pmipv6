@@ -1,12 +1,12 @@
 /*! \file pmip_cache.c
-* \brief PMIP binding cache functions
-* \author OpenAir3 Group
-* \date 12th of October 2010
-* \version 1.0
-* \company Eurecom
-* \project OpenAirInterface
-* \email: openair3@eurecom.fr
-*/
+ * \brief PMIP binding cache functions
+ * \author OpenAir3 Group
+ * \date 12th of October 2010
+ * \version 1.0
+ * \company Eurecom
+ * \project OpenAirInterface
+ * \email: openair3@eurecom.fr
+ */
 #define PMIP
 #define PMIP_CACHE_C
 #ifdef HAVE_CONFIG_H
@@ -24,6 +24,10 @@
 //---------------------------------------------------------------------------------------------------------------------
 static struct hash		g_pmip_hash;
 static int				g_pmip_cache_count = 0;
+
+static struct hash		g_pmipv4_hash;
+static int				g_pmipv4_cache_count = 0;
+
 //---------------------------------------------------------------------------------------------------------------------
 int get_pmip_cache_count(int type)
 {
@@ -83,6 +87,36 @@ int pmip_cache_init(void)
 #endif
 	return ret;
 }
+
+//---------------------------------------------------------------------------------------------------------------------
+int pmipv4_cache_init(void)
+{
+	int ret;
+	int mutex_return_code;
+	dbg("pmipv4 cache init suceeced\n");
+	if (pthread_rwlock_init(&pmip_v4_lock, NULL)) {
+		return -1;
+	}
+	mutex_return_code = pthread_rwlock_wrlock(&pmip_v4_lock);
+	if (mutex_return_code != 0) {
+		dbg("pthread_rwlock_wrlock(&pmip_v4_lock) %s\n", strerror(mutex_return_code));
+	}
+
+	ret = hash_init(&g_pmipv4_hash, DOUBLE_ADDR, PMIP_CACHE_BUCKETS);
+
+	mutex_return_code = pthread_rwlock_unlock(&pmip_v4_lock);
+	if (mutex_return_code != 0) {
+		dbg("pthread_rwlock_unlock(&pmip_v4_lock) %s\n", strerror(mutex_return_code));
+	}
+
+#ifdef ENABLE_VT
+	if (ret < 0)
+		return ret;
+	ret = vt_pbc_init();
+#endif
+	return ret;
+}
+
 //---------------------------------------------------------------------------------------------------------------------
 void init_iface_ra()
 {
@@ -130,6 +164,191 @@ pmip_entry_t *pmip_cache_alloc(int type)
 	dbg("PMIP cache entry is allocated..\n");
 	return tmp;
 }
+
+//---------------------------------------------------------------------------------------------------------------------
+pmip_entry_t *pmipv4_cache_alloc(int type)
+{
+	pmip_entry_t *tmp;
+	tmp = malloc(sizeof(pmip_entry_t));
+
+	if (tmp == NULL) {
+		dbg("NO memory allocated for PMIP v4 cache entry..\n");
+		return NULL;
+	}
+
+	memset(tmp, 0, sizeof(*tmp));
+
+	if (pthread_rwlock_init(&tmp->lock, NULL)) {
+		free(tmp);
+		return NULL;
+	}
+	INIT_LIST_HEAD(&tmp->tqe.list);
+	tmp->type = type;
+	//make pmipv4 type
+	dbg("PMIP cache entry is allocated for v4..\n");
+	return tmp;
+}
+//---------------------------------------------------------------------------------------------------------------------
+pmip_entry_t *pmipv4_cache_add(pmip_entry_t * bce)
+{
+	int ret = 1;
+	int mutex_return_code;
+	assert(bce);
+	bce->unreach = 0;
+	mutex_return_code = pthread_rwlock_wrlock(&pmip_v4_lock);
+	if (mutex_return_code != 0) {
+		dbg("pthread_rwlock_wrlock(&pmip_v4_lock) %s\n", strerror(mutex_return_code));
+	}
+	if ((ret = __pmipv4cache_insert(bce)) != 0) {
+		pthread_rwlock_unlock(&pmip_v4_lock);
+		dbg("WARNING: PMIP ENTRY NOT INSERTED..\n");
+		return NULL;
+	}
+	dbg("Making Entry\n");
+	dbg("PMIP cache entry for: %x:%x:%x:%x:%x:%x:%x:%x with type %d is added\n", NIP6ADDR(&bce->mn_hw_address), bce->type);
+	bce->n_rets_counter = conf.MaxMessageRetransmissions;
+	dbg("Retransmissions counter intialized: %d\n", bce->n_rets_counter);
+	if (bce->type == BCE_PMIP) {
+		pmipv4_cache_start(bce);
+	}
+	mutex_return_code = pthread_rwlock_unlock(&pmip_v4_lock);
+
+	if (mutex_return_code != 0) {
+		dbg("pthread_rwlock_unlock(&pmip_v4_lock) %s\n", strerror(mutex_return_code));
+	}
+	return bce;
+}
+//---------------------------------------------------------------------------------------------------------------------
+int __pmipv4cache_insert(pmip_entry_t * bce)
+{
+	int ret;
+	ret = hash_add(&g_pmipv4_hash, bce, &bce->our_addr, &bce->mn_hw_address);
+	if (ret) {
+		return ret;
+	}
+	g_pmipv4_cache_count++;
+	dbg("PMIPv4 cache entry is inserted for: %x:%x:%x:%x:%x:%x:%x:%x <-> %x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(&bce->our_addr), NIP6ADDR(&bce->mn_hw_address));
+	return 0;
+}
+int pmipv4_cache_start(pmip_entry_t * bce)
+{
+	dbg("PMIP cache start is initialized add task pmip_timer_bce_expired_handler in %d seconds\n", bce->lifetime.tv_sec);
+	struct timespec expires;
+	clock_gettime(CLOCK_REALTIME, &bce->add_time);
+	tsadd(bce->add_time, bce->lifetime, expires);
+
+	add_task_abs(&expires, &bce->tqe,  pmip_timer_bce_expired_handler);
+	return 0;
+}
+
+//---------------------------------------------------------------------------------------------------------------------
+int pmipv4_cache_exists(const struct in6_addr *our_addr, const struct in6_addr *peer_addr)
+{
+	dbg("in pmipv4_cache_exists \n");
+	pmip_entry_t *bce;
+	int type;
+	bce = pmipv4_cache_get(our_addr, peer_addr);
+	if (bce == NULL) {
+		return -1;
+	}
+	dbg("PMIP v4 cache entry does exist with type: %d\n", (bce->type));
+	type = bce->type;
+	pmipv4cache_release_entry(bce);
+	return type;
+}
+
+//---------------------------------------------------------------------------------------------------------------------
+pmip_entry_t *pmipv4_cache_get(const struct in6_addr * our_addr, const struct in6_addr * peer_addr)
+{
+	pmip_entry_t *bce;
+	int mutex_return_code;
+
+	assert(peer_addr && our_addr);
+	mutex_return_code = pthread_rwlock_rdlock(&pmip_v4_lock);
+
+	if (mutex_return_code != 0) {
+		dbg("pthread_rwlock_rdlock(&pmip_v4_lock) %s\n", strerror(mutex_return_code));
+	}
+	bce = hash_get(&g_pmipv4_hash, our_addr, peer_addr);
+	if (bce) {
+		mutex_return_code = pthread_rwlock_wrlock(&bce->lock);
+		if (mutex_return_code != 0) {
+			dbg("pthread_rwlock_wrlock(&bce->lock) %s\n", strerror(mutex_return_code));
+		}
+		dbg("PMIP cache entry is found for: %x:%x:%x:%x:%x:%x:%x:%x with type %d\n", NIP6ADDR(&bce->mn_hw_address), (bce->type));
+	} else {
+		mutex_return_code = pthread_rwlock_unlock(&pmip_v4_lock);
+		if (mutex_return_code != 0) {
+			dbg("pthread_rwlock_unlock(&pmip_v4_lock) %s\n", strerror(mutex_return_code));
+		}
+		dbg("PMIP cache entry is NOT found for %x:%x:%x:%x:%x:%x:%x:%x <-> %x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(our_addr), NIP6ADDR(peer_addr));
+	}
+	return bce;
+}
+//---------------------------------------------------------------------------------------------------------------------
+void pmipv4cache_release_entry(pmip_entry_t * bce)
+{
+	int mutex_return_code;
+	assert(bce);
+
+	dbg(":Enter\n");
+	mutex_return_code = pthread_rwlock_unlock(&bce->lock);
+	if (mutex_return_code != 0) {
+		dbg("pthread_rwlock_unlock(&bce->lock) %s\n", strerror(mutex_return_code));
+	}
+	mutex_return_code = pthread_rwlock_unlock(&pmip_v4_lock);
+
+	if (mutex_return_code != 0) {
+		dbg("pthread_rwlock_unlock(&pmip_v4_lock) %s\n", strerror(mutex_return_code));
+	}
+}
+
+//---------------------------------------------------------------------------------------------------------------------
+void pmipv4cache_free(pmip_entry_t * bce)
+{
+	/* This function should really return allocated space to free
+	 * pool. */
+	int mutex_return_code;
+	mutex_return_code = pthread_rwlock_destroy(&bce->lock);
+	if (mutex_return_code != 0) {
+		dbg("pthread_rwlock_destroy(&bce->lock) %s\n", strerror(mutex_return_code));
+	}
+	free(bce);
+	dbg("PMIP cache entry is free\n");
+}
+
+
+//---------------------------------------------------------------------------------------------------------------------
+void pmipv4_bce_delete(pmip_entry_t * bce)
+{
+	int mutex_return_code;
+
+	mutex_return_code = pthread_rwlock_wrlock(&bce->lock);
+	if (mutex_return_code != 0) {
+		dbg("pthread_rwlock_wrlock(&bce->lock) %s\n", strerror(mutex_return_code));
+	}
+	del_task(&bce->tqe);
+	if (bce->cleanup) {
+		dbg("before cleanaup!\n");
+		//bce->cleanup(bce);
+		dbg("after cleanaup commented cleanaup!\n");
+	}
+	g_pmipv4_cache_count--;
+
+	hash_delete(&g_pmipv4_hash, &bce->our_addr, &bce->mn_hw_address);
+
+	mutex_return_code = pthread_rwlock_unlock(&bce->lock);
+	if (mutex_return_code != 0) {
+		dbg("pthread_rwlock_unlock(&bce->lock) %s\n", strerror(mutex_return_code));
+	}
+
+	pmipv4cache_free(bce);
+
+	dbg("PMIP cache entry is deleted!\n");
+}
+
+
+
 //---------------------------------------------------------------------------------------------------------------------
 static int __pmipcache_insert(pmip_entry_t * bce)
 {
@@ -218,10 +437,10 @@ void pmipcache_release_entry(pmip_entry_t * bce)
 	if (mutex_return_code != 0) {
 		dbg("pthread_rwlock_unlock(&bce->lock) %s\n", strerror(mutex_return_code));
 	}
-    mutex_return_code = pthread_rwlock_unlock(&pmip_lock);
- 	if (mutex_return_code != 0) {
- 		dbg("pthread_rwlock_unlock(&pmip_lock) %s\n", strerror(mutex_return_code));
- 	}
+	mutex_return_code = pthread_rwlock_unlock(&pmip_lock);
+	if (mutex_return_code != 0) {
+		dbg("pthread_rwlock_unlock(&pmip_lock) %s\n", strerror(mutex_return_code));
+	}
 }
 //---------------------------------------------------------------------------------------------------------------------
 int pmip_cache_exists(const struct in6_addr *our_addr, const struct in6_addr *peer_addr)
@@ -240,8 +459,8 @@ int pmip_cache_exists(const struct in6_addr *our_addr, const struct in6_addr *pe
 //---------------------------------------------------------------------------------------------------------------------
 void pmipcache_free(pmip_entry_t * bce)
 {
-/* This function should really return allocated space to free
-* pool. */
+	/* This function should really return allocated space to free
+	 * pool. */
 	int mutex_return_code;
 	mutex_return_code = pthread_rwlock_destroy(&bce->lock);
 	if (mutex_return_code != 0) {
@@ -317,6 +536,38 @@ int pmip_cache_iterate_ext(int (*func) (void *, void *, void *), void *arg, void
 	}
 	err = hash_iterate_ext(&g_pmip_hash, func, arg, usr_data);
 	mutex_return_code = pthread_rwlock_unlock(&pmip_lock);
+	if (mutex_return_code != 0) {
+		dbg("pthread_rwlock_unlock(&pmip_lock) %s\n", strerror(mutex_return_code));
+	}
+	return err;
+}
+
+int pmipv4_cache_iterate(int (*func) (void *, void *), void *arg)
+{
+	int err;
+	int mutex_return_code;
+	mutex_return_code = pthread_rwlock_rdlock(&pmip_v4_lock);
+	if (mutex_return_code != 0) {
+		dbg("pthread_rwlock_rdlock(&pmip_lock) %s\n", strerror(mutex_return_code));
+	}
+	err = hash_iterate(&g_pmipv4_hash, func, arg);
+	mutex_return_code = pthread_rwlock_unlock(&pmip_v4_lock);
+	if (mutex_return_code != 0) {
+		dbg("pthread_rwlock_unlock(&pmip_lock) %s\n", strerror(mutex_return_code));
+	}
+	return err;
+}
+
+int pmipv4_cache_iterate_ext(int (*func) (void *, void *, void *), void *arg, void * usr_data)
+{
+	int err;
+	int mutex_return_code;
+	mutex_return_code = pthread_rwlock_rdlock(&pmip_v4_lock);
+	if (mutex_return_code != 0) {
+		dbg("pthread_rwlock_rdlock(&pmip_lock) %s\n", strerror(mutex_return_code));
+	}
+	err = hash_iterate_ext(&g_pmipv4_hash, func, arg, usr_data);
+	mutex_return_code = pthread_rwlock_unlock(&pmip_v4_lock);
 	if (mutex_return_code != 0) {
 		dbg("pthread_rwlock_unlock(&pmip_lock) %s\n", strerror(mutex_return_code));
 	}

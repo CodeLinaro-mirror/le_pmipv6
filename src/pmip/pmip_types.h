@@ -22,9 +22,14 @@
 //---------------------------------------------------------------------------------------------------------------------
 #    include "mh.h"
 //---------------------------------------------------------------------------------------------------------------------
+#include "pmipv4_conf.h"
+
 
 #define PMIP_IPV6_ADDR_LEN 16
 #define PMIP_MAC_ADDR_LEN  6
+#define ETHER_ADDR_LEN 6
+#define QCMAP_MSGR_MAC_ADDR_NUM_CHARS_V01 18
+
 
 /*
 * Mobility Option TLV data structure
@@ -42,6 +47,91 @@ struct in6_addr	ip6hnp_prefix;  /*!< \brief A sixteen-byte field containing the 
 } __attribute__ ((__packed__));
 
 typedef struct ip6_mh_opt_home_net_prefix_t ip6_mh_opt_home_net_prefix_t;
+#if 0
+union info_t {
+struct info_t1{
+   __u16 plen : 6; /*!< \brief 6-bit unsigned integer indicating the length of prefix.*/
+   __u16 res : 10; /*!< \brief This 10-bit field is unused for now.  The value MUST be initialized to 0 by the sender and MUST be ignored by the receiver.*/
+}m;
+__u16 data;
+};
+#endif
+
+struct flag_res_t{
+   unsigned int res : 7; /*!< \brief This 7-bit field is unused for now.  The value MUST be initialized to 0 by the sender and MUST be ignored by the receiver.*/
+   unsigned int isv4dmnp : 1; /*!< \brief 1-bit unsigned integer indicating ipv4 or ipv6 DMNP prefix.*/
+} __attribute__ ((__packed__));
+
+
+/*! \struct  ip_mh_opt_v4_home_addr_request_option_t
+* \brief Mobility Option TLV data structure: Home Network Prefix request Option.
+*/
+struct ip_mh_opt_v4_home_addr_request_option_t {   /*Home netowork prefix option */
+__u8				ip4hnp_type;	/*!< \brief Type is  "Home Network Prefix Option" value.*/
+__u8 ip4_opt_len; //option length
+#if 0
+#if defined(__LITTLE_ENDIAN_BITFIELD)
+         __u16    plen:6,
+                 res:10;
+#elif defined (__BIG_ENDIAN_BITFIELD)
+         __u16    res:10,
+                 plen:6;
+#else
+#endif
+#endif
+__u16 plen;
+ //union info_t var;
+struct in_addr	ip4hnp_prefix;  /*!< \brief A four-byte field containing the mobile node's IPv4 Home Network Prefix.*/
+} __attribute__ ((__packed__));
+
+typedef struct ip_mh_opt_v4_home_addr_request_option_t ip_mh_opt_v4_home_addr_request_option_t;
+#if 0
+struct bit_info_t{
+   unsigned int res : 2; /*!< \brief This 2-bit field is unused for now.  The value MUST be initialized to 0 by the sender and MUST be ignored by the receiver.*/
+   unsigned int plen : 6; /*!< \brief 6-bit unsigned integer indicating the length of prefix.*/
+} __attribute__ ((__packed__));
+#endif
+
+/*! \struct  ip_mh_opt_v4_home_addr_reply_option_t
+* \brief Mobility Option TLV data structure: Home Network Prefix reply Option.
+*/
+struct ip_mh_opt_v4_home_addr_reply_option_t {   /*Home netowork prefix option */
+__u8				ip4hnp_type;	/*!< \brief Type is  "Home Network Prefix Option" value.*/
+__u8 ip4_opt_len; //option length
+__u8 status;
+__u8 plen; //include 6 bit  prfix lengh & 2 bit  reserv field
+// struct bit_info_t var;
+struct in_addr	ip4hnp_prefix;  /*!< \brief A four-byte field containing the mobile node's IPv4 Home Network Prefix.*/
+} __attribute__ ((__packed__));
+
+typedef struct ip_mh_opt_v4_home_addr_reply_option_t ip_mh_opt_v4_home_addr_reply_option_t;
+
+
+/*! \struct  ip_mh_opt_v4_dmnp_prefix_option_t
+* \brief DMNP prefix option.
+*/
+struct ip_mh_opt_v4_dmnp_prefix_option_t {   /*Home netowork prefix option */
+__u8				ip4hnp_type;	/*!< \brief Type is  "DMNP prefix type" value.*/
+__u8 ip4_opt_len; //option length
+ struct flag_res_t var;;
+ __u8 prefix_len;
+struct in_addr	dmnp_prefix;  /*!< \brief DMNP prefix.*/
+} __attribute__ ((__packed__));
+
+typedef struct ip_mh_opt_v4_dmnp_prefix_option_t ip_mh_opt_v4_dmnp_prefix_option_t;
+
+/*! \struct  ip_mh_opt_v4_dmnp_prefix_option_t
+* \brief DMNP prefix option.
+*/
+struct ip_mh_opt_v4_default_router_addr_option_t {   /*Default Router addr*/
+__u8				ip4hnp_type;	/*!< \brief Type is  "DMNP prefix type" value.*/
+__u8 ip4_opt_len; //option length
+__u16 res;
+struct in_addr	default_router_addr;  /*!< \brief default router address*/
+} __attribute__ ((__packed__));
+
+typedef struct ip_mh_opt_v4_default_router_addr_option_t ip_mh_opt_v4_default_router_addr_option_t;
+
 
 
 /*! \struct  ip6mnid_t
@@ -193,7 +283,11 @@ typedef struct ip6_mh_opt_src_mag_addr_t ip6_mh_opt_src_mag_addr_t;
 typedef struct msg_info_t {
 	struct in6_addr				src;				/*!< \brief Source address of the message.*/
 	struct in6_addr				dst;				/*!< \brief Destination address of the message.*/
+	struct in_addr				srcv4;				/*!< \brief Source v4 address of the message.*/
+	struct in_addr				dstv4;				/*!< \brief Destination v4 address of the message.*/
+
 	struct in6_addr_bundle		addrs;				/*!< \brief Tuple composed of src and dst address.*/
+	struct in_addr_bundle		addrsv4;				/*!< \brief Tuple composed of src and dst address v4.*/
 	int							iif;				/*!< \brief Interface identifier.*/
 	uint32_t					msg_event;			/*!< \brief Type of event received: hasDEREG hasWLCCP hasRS hasNA hasNS hasPBU hasPBA hasPBREQ hasPBRES */
 	struct in6_addr				mn_iid;				/*!< \brief Mobile node IID.*/
@@ -217,6 +311,21 @@ typedef struct msg_info_t {
 	int							hoplimit;			/*!< \brief Route optimization or flow control: Hop limit*/
 	uint8_t						gre_key_valid;		/*!< \brief Gre Key info valid or not */
 	uint32_t					gre_key;			/*!< \brief GRE Key value info */
+	struct in_addr				dmnp_prefix;				/*!< \brief DMNP prefix.*/
+	uint8_t						dmnp_prefix_len;				/*!< \brief DMNP prefix len*/
+	uint8_t 					dmnp_pba_status;	/*! < brief DMNP PBA status*/
+	int 						hasipv4_dmnp_prefix_option;
+	int 						pmipv4_hnp_req_valid;
+	int 						pmipv4_hnp_reply_valid;
+	struct in_addr				dhcp_request_ip;
+
+	//default router info
+	struct in_addr				default_router;				/*!< \brief default router address.*/
+	int 						hasipv4_default_router_option;
+
+	struct in_addr				v4_home_prefix;				/*!< \brief DMNP prefix.*/
+	uint8_t						v4_home_prefixlen;
+	uint8_t						v4_home_addr_reply_status;
 } msg_info_t;
 #endif
 /*@}*/

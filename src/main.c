@@ -30,17 +30,17 @@
  * Authors: OPENAIR3 <openair_tech@eurecom.fr>
  *
  * Copyright 2010-2011 EURECOM (Sophia-Antipolis, FRANCE)
- * 
- * Proxy Mobile IPv6 (or PMIPv6, or PMIP) is a network-based mobility 
- * management protocol standardized by IETF. It is a protocol for building 
- * a common and access technology independent of mobile core networks, 
- * accommodating various access technologies such as WiMAX, 3GPP, 3GPP2 
- * and WLAN based access architectures. Proxy Mobile IPv6 is the only 
+ *
+ * Proxy Mobile IPv6 (or PMIPv6, or PMIP) is a network-based mobility
+ * management protocol standardized by IETF. It is a protocol for building
+ * a common and access technology independent of mobile core networks,
+ * accommodating various access technologies such as WiMAX, 3GPP, 3GPP2
+ * and WLAN based access architectures. Proxy Mobile IPv6 is the only
  * network-based mobility management protocol standardized by IETF.
- * 
+ *
  * PMIP Proxy Mobile IPv6 for Linux has been built above MIPL free software;
  * which it involves that it is under the same terms of GNU General Public
- * License version 2. See MIPL terms condition if you need more details. 
+ * License version 2. See MIPL terms condition if you need more details.
  */
 
 #ifdef HAVE_CONFIG_H
@@ -76,6 +76,8 @@
 #endif
 #include "tunnelctl.h"
 #include "pmip.h"
+#include "pmipv4_conf.h"
+
 
 static void sig_child(int unused)
 {
@@ -135,7 +137,7 @@ static void daemon_start(int ignsigcld)
 		close(fd);
 	}
 
- out:
+out:
 	for (fd = 0; fd < NOFILE; fd++) close(fd);
 	errno = 0;
 
@@ -151,39 +153,6 @@ static void daemon_start(int ignsigcld)
 	}
 }
 
-static void *sigh(void *arg)
-{
-	int signum;
-	sigset_t sigcatch;
-
-	pthread_dbg("thread started");
-
-	sigemptyset(&sigcatch);
-	sigaddset(&sigcatch, SIGHUP);
-	sigaddset(&sigcatch, SIGINT);
-	sigaddset(&sigcatch, SIGTERM);
-#ifdef ENABLE_VT
-	sigaddset(&sigcatch, SIGPIPE);
-#endif
-
-	for ( ;; ) {
-		sigwait(&sigcatch, &signum);
-		switch (signum) {
-		case SIGHUP:
-			reinit();
-			break;
-		case SIGINT:
-		case SIGTERM:
-#ifdef ENABLE_VT
-		case SIGPIPE:
-#endif
-			terminate();
-		default:
-			break;
-		}
-	}
-	pthread_exit(NULL);
-}
 
 const char *entity_string[5] = {
 	"Correspondent Node",
@@ -192,23 +161,69 @@ const char *entity_string[5] = {
 	"Mobile Access Gateway",
 	"Local Mobility Anchor" };
 
+int getifaceip(struct in_addr *addr, char *iface)
+{
+
+	int s, ret;
+	struct ifreq buffer;
+	struct sockaddr_in *sa;
+
+	if ( addr== NULL)
+	{
+		dbg("Null arguements passed.\n");
+		return -1;
+	}
+
+	/* Open a socket */
+	s = socket(PF_INET, SOCK_DGRAM, 0);
+	if ( s < 0 )
+	{
+		dbg("Unable to open socket to get IP address.\n");
+		return -1;
+	}
+	/* Set up the interface request buffer for wlan0. */
+	memset(&buffer, 0x00, sizeof(buffer));
+	strcpy(buffer.ifr_name, iface);
+
+	/* Call the ioctl to get the address. */
+	ret = ioctl(s, SIOCGIFADDR, &buffer);
+
+	if ( ret < 0 )
+	{
+		dbg("Unable to call ioctl to get IP address.\n");
+		/* Close the socket handle. */
+		close(s);
+		return -1;
+	}
+	/* Copy out the ip address for the interface. */
+	sa = (struct sockaddr_in *)&(buffer.ifr_addr);
+
+	*addr = sa->sin_addr;
+
+	//dbg("req Iface %s,result Interface ip %s\n",iface,inet_ntoa(*addr));
+
+
+	/* Close the socket handle. */
+	close(s);
+
+	return 0;
+}
+
+
 int main(int argc, char **argv)
 {
-	pthread_t sigth;
-	sigset_t sigblock;
 	int logflags = 0;
 	int ret = 1;
+	struct in_addr sa;
+	char command[200];
 
 	debug_init();
 
-	sigemptyset(&sigblock);
-	sigaddset(&sigblock, SIGHUP);
-	sigaddset(&sigblock, SIGINT);
-	sigaddset(&sigblock, SIGTERM);
-#ifdef ENABLE_VT
-	sigaddset(&sigblock, SIGPIPE);
-#endif
-	pthread_sigmask(SIG_BLOCK, &sigblock, NULL);
+	//handling signal
+	signal (SIGHUP,reinit);
+	signal(SIGTERM, terminate);
+	signal(SIGINT, terminate);
+	signal(SIGPIPE, terminate);
 
 	if (conf_parse(&conf, argc, argv))
 		return 1;
@@ -216,10 +231,14 @@ int main(int argc, char **argv)
 	if (conf.debug_level > 0)
 		logflags = LOG_PERROR;
 
+	dbg("------ pmip mode %d-------------\n",conf.pmip_mode_type);
+
+	dbg("------ pmipv4 work mode %d-------------\n",conf.pmipv4_work_mode_type);
+	dbg("------ pmip Tunnel Mode %d-------------\n",conf.pmip_tunnel_mode);
 	openlog(basename(argv[0]), LOG_PID|logflags, LOG_DAEMON);
 
 	syslog(LOG_INFO, "%s v%s started (%s)", PACKAGE_NAME, PACKAGE_VERSION,
-	       entity_string[conf.mip6_entity]);
+			entity_string[conf.mip6_entity]);
 #ifdef ENABLE_VT
 	if (vt_init() < 0)
 		goto vt_failed;
@@ -227,7 +246,9 @@ int main(int argc, char **argv)
 
 	/* if not debugging, detach from tty */
 	if (conf.debug_level == 0)
+	{
 		daemon_start(1);
+	}
 	else {
 		/* if debugging with debug log file, detach from tty */
 		if (conf.debug_log_file) {
@@ -236,13 +257,13 @@ int main(int argc, char **argv)
 			ret = debug_open(conf.debug_log_file);
 			if (ret < 0) {
 				fprintf(stderr, "can't init debug log:%s\n",
-					strerror(-ret));
+						strerror(-ret));
 				goto debug_failed;
 			}
 			dbg("%s started in debug mode\n", PACKAGE_NAME);
 		} else {
 			dbg("%s started in debug mode, not detaching from terminal\n",
-			    PACKAGE_NAME);
+					PACKAGE_NAME);
 		}
 		conf_show(&conf);
 	}
@@ -257,16 +278,89 @@ int main(int argc, char **argv)
 		goto taskqueue_failed;
 	if (bcache_init() < 0)
 		goto bcache_failed;
+
+	//If tunnel mode v6 or Pmip mode is v6 listen for IPv6 traffic
+	if ((conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
+		 || (conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
+		 || (conf.pmip_mode_type == IP_FAMILY_V4V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
+		 || (conf.pmip_mode_type == IP_FAMILY_V6_V01) ||(conf.pmip_mode_type == IP_FAMILY_V4V6_V01))
+	{
 	if (mh_init() < 0)
 		goto mh_failed;
-	if (icmp6_init() < 0)
-		goto icmp6_failed;
-	if (!(is_ha()) && !(is_mag()))
-	if (xfrm_init() < 0)
-		goto xfrm_failed;
+	}else {
+		dbg("Tunnel mode is not v6/Pmip mode is not v6. so dont do mh_init\n");
+	}
+	//If tunnel mode v4 listen for Mipv6 packet over IPv4 traffic
+	if ((conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
+		 || (conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
+		 || (conf.pmip_mode_type == IP_FAMILY_V4V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01))
+	{
+	if (mhv4_init() < 0)
+			goto mhv4_failed;
+	}else {
+		dbg("Tunnel mode is not v4 so dont do mhv4_init\n");
+	}
+	//based on pmip mode listen for traffic
+	if ((conf.pmip_mode_type == IP_FAMILY_V6_V01) ||(conf.pmip_mode_type == IP_FAMILY_V4V6_V01))
+	{
+		dbg(" pmip mode is v6 so enable icmpv6 deamon\n");
+		if (icmp6_init() < 0)
+			goto icmp6_failed;
+	} else {
+		dbg("pmip mode is v4 so dont enable icmpv6 deamon\n");
+	}
+	if (is_mag() && (conf.pmip_mode_type == IP_FAMILY_V4_V01 || conf.pmip_mode_type == IP_FAMILY_V4V6_V01)) {
+		dbg("pmip mode is v4 start dhcp deamon");
+		//start dnsmasq for ipv4
+		dbg("Kiiling dnsmasq . & start dnsmasq to not provide any ip\n");
+		system("killall -1 dnsmasq");
+		system("killall -15 dnsmasq");
+		system("killall -9 dnsmasq");
+		ret = getifaceip(&sa, BRIDGE_IFACE);
+		if (ret == 0) {
+			snprintf (command,200,"dnsmasq -i %s -I lo -z --dhcp-range=%s,%s,static,255.255.255.0,43200 --dhcp-hostsfile=/etc/dhcp_hosts --dhcp-option-force=6,%s --dhcp-option-force=3,%s",BRIDGE_IFACE,BRIDGE_IFACE,inet_ntoa(sa),inet_ntoa(sa),inet_ntoa(sa));
+			dbg("main dnsmasq command =%s=",command);
+			system(command);
+		} else {
+
+			dbg("getting ip failed for %s", BRIDGE_IFACE);
+		}
+
+		if (dhcp_init() < 0) {
+			dbg ("dhcp init failed failed\n");
+			goto dhcp_failed;
+		}
+		else
+			dbg ("dhcp init passed\n");
+	}
+	else
+	{
+		dbg("not pmip v4 mode do not start dhcp deamon mode=%d\n",conf.pmip_mode_type);
+	}
+	if (!(is_ha()) && !(is_mag()) && !(is_lma()))
+		if (xfrm_init() < 0)
+			goto xfrm_failed;
 	cn_init();
-	if ((is_ha() || is_mn() || is_lma() || is_mag()) && tunnelctl_init() < 0)
+	//If tunnel mode v6 or Pmip mode is v6 listen for IPv6 traffic
+	if ((conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
+		 || (conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
+		 || (conf.pmip_mode_type == IP_FAMILY_V4V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01))
+	{
+		if ((is_ha() || is_mn() || is_lma() || is_mag()) && ((tunnelctl_init() < 0) ))
 		goto tunnelctl_failed;
+	}
+	else
+		dbg("Do not Init v6 tunnel As v6 tunnel not needed\n");
+	//If tunnel mode v4 init v4 tunnel
+	if ((conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
+		 || (conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
+		 || (conf.pmip_mode_type == IP_FAMILY_V4V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01))
+	{
+		if((is_lma() || is_mag()) && tunnelctlv4_init() < 0)
+			goto tunnelctlv4_failed;
+	}
+	else
+		dbg("Do not Init v4 tunnel As v4 tunnel not needed\n");
 	if (is_ha() && ha_init() < 0)
 		goto ha_failed;
 	if (is_mn() && mn_init() < 0)
@@ -275,16 +369,13 @@ int main(int argc, char **argv)
 		goto pmip_failed;
 	if (is_mag() && pmip_mag_init() < 0)
 		goto pmip_failed;
+	dbg("Waiting.....\n");
+	while(1);
 
 #ifdef ENABLE_VT
 	if (vt_start(conf.vt_hostname, conf.vt_service) < 0)
 		goto vt_start_failed;
 #endif
-	if (pthread_create(&sigth, NULL, sigh, NULL))
-		goto sigth_failed;
-	pthread_join(sigth, NULL);
-	ret = 0;
-sigth_failed:
 #ifdef ENABLE_VT
 	vt_fini();
 vt_start_failed:
@@ -294,33 +385,52 @@ vt_start_failed:
 pmip_failed:
 	pmip_cleanup();
 mn_failed:
+	if (is_mn())
+		mn_cleanup();
+
+ha_failed:
 	if (is_ha())
 		ha_cleanup();
-ha_failed:
-	if (is_ha() || is_mn())
-		tunnelctl_cleanup();
 tunnelctl_failed:
+	if (is_ha() || is_mn())
+	{
+		tunnelctl_cleanup();
+		tunnelctlv4_cleanup();
+	}
+tunnelctlv4_failed:
+	if (is_ha() || is_mn())
+		{
+		tunnelctlv4_cleanup();
+		}
+
+xfrm_failed:
 	cn_cleanup();
 	xfrm_cleanup();
-xfrm_failed:
-	icmp6_cleanup();
 icmp6_failed:
-	mh_cleanup();
+	icmp6_cleanup();
 mh_failed:
-	bcache_cleanup();
+	mh_cleanup();
+mhv4_failed:
+	mhv4_cleanup();
 bcache_failed:
-	taskqueue_destroy();
+	bcache_cleanup();
 taskqueue_failed:
-	policy_cleanup();
+	taskqueue_destroy();
 policy_failed:
+	policy_cleanup();
 rr_cn_failed:
-	debug_close();
+
 debug_failed:
+	debug_close();
 #ifdef ENABLE_VT
 vt_failed:
 #endif
+
+dhcp_failed:
+	dhcp_cleanup();
+
 	syslog(LOG_INFO, "%s v%s stopped (%s)", PACKAGE_NAME, PACKAGE_VERSION,
-	       entity_string[conf.mip6_entity]);
+			entity_string[conf.mip6_entity]);
 	closelog();
 	return ret;
 }

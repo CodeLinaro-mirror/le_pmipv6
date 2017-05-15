@@ -37,6 +37,7 @@
 */
 static mnid_hnp_t 			g_mn_hn_map[MAX_MOBILES];
 static mnid_hnp_t 			default_mn_hn_map;
+extern int getipforclient(struct in_addr *addr);
 
 /*! \var int 					g_mn_count
 \brief Number of elements in g_mn_hn_map.
@@ -171,7 +172,7 @@ void pmip_lma_mn_to_hnp_cache_init(void)
   memset((void*)&default_mn_hn_map, 0, sizeof(mnid_hnp_t));
 
   if ((fp = fopen ("/etc/match", "r")) == NULL) {
-			dbg ("can't open /etc/match file .. Assign default");
+			dbg ("can't open /etc/match file .. Assign default\n");
 		    inet_pton(AF_INET6, DEFAULT_GLOBAL_PREFIX, &default_mn_hn_map.mn_prefix );
 			return;
 		}
@@ -254,7 +255,7 @@ int pmip_mn_to_hnp_cache_init (void)
     memset(g_mn_hn_map, 0, sizeof(mnid_hnp_t) * MAX_MOBILES);
     j = 0;
     if ((fp = fopen ("/etc/match", "r")) == NULL) {
-        dbg("can't open %s:", "/match");
+        dbg("can't open %s:\n", "/match");
 		return 0;
     }
     while ((fscanf (fp, "%32s %32s\n", str_addr, str_addr_iid) != EOF) && (j < MAX_MOBILES)) {
@@ -398,4 +399,5 @@ struct in6_addr mnid_hnp_map(struct in6_addr mnid, int *aaa_result)
     return cached_prefix;
 #endif
 }
+
 

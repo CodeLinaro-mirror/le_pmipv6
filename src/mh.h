@@ -30,6 +30,12 @@ struct in6_addr_bundle {
 	struct in6_addr *bind_coa;
 };
 
+struct in_addr_bundle {
+	struct in_addr *src;
+	struct in_addr *dst;
+};
+
+
 struct mh_options {
 	ssize_t opts[IP6_MHOPT_MAX + 1];
 	ssize_t opts_end[IP6_MHOPT_MAX + 1];
@@ -40,8 +46,16 @@ struct mh_handler {
 	void (* recv)(const struct ip6_mh *mh, ssize_t len,
 		      const struct in6_addr_bundle *in_addrs, int iif);
 };
+struct mhv4_handler {
+	struct mhv4_handler *next;
+	void (* recv)(const struct ip6_mh *mh, ssize_t len,
+		      const struct in_addr_bundle *in_addrs, int iif);
+};
+
 
 int mh_init(void);
+int mhv4_init(void);
+
 void mh_cleanup(void);
 
 int mh_send(const struct in6_addr_bundle *addrs,
@@ -71,6 +85,9 @@ void mh_send_be(struct in6_addr *dst,
 ssize_t mh_recv(unsigned char *msg, size_t msglen,
 		struct sockaddr_in6 *addr, struct in6_pktinfo *pkt_info,
 		struct in6_addr *hoa, struct in6_addr *rtaddr);
+ssize_t mhv4_recv(unsigned char *msg, size_t msglen,
+		struct sockaddr_in *addr, struct in_pktinfo *pkt_info);
+
 
 /* Mobility header and option creation functions */
 void *mh_create(struct iovec *iov, uint8_t type);

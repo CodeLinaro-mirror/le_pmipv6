@@ -2,7 +2,7 @@
  * $Id: debug.c 1.23 06/05/07 21:52:42+03:00 anttit@tcs.hut.fi $
  *
  * This file is part of the MIPL Mobile IPv6 for Linux.
- * 
+ *
  * Author: Antti Tuominen <anttit@tcs.hut.fi>
  *
  * Copyright 2003-2005 Go-Core Project
@@ -54,7 +54,7 @@ static const char *dbg_strdate(char *str)
 		} else {
 			char buf[1024];
 			sprintf(str, "%.19s",
-				(ctime_r(&t, buf) ? buf : "(ctime_r error)"));
+					(ctime_r(&t, buf) ? buf : "(ctime_r error)"));
 		}
 	}
 
@@ -63,13 +63,13 @@ static const char *dbg_strdate(char *str)
 
 void dbgprint(const char *fname, const char *fmt, ...)
 {
-        char s[1024];
-        char stime[1024];
-        va_list args;
- 
-        va_start(args, fmt);
-        vsprintf(s, fmt, args);
-        va_end(args);
+	char s[1024];
+	char stime[1024];
+	va_list args;
+
+	va_start(args, fmt);
+	vsprintf(s, fmt, args);
+	va_end(args);
 
 	memset(stime, '\0', sizeof(stime));
 	fprintf(sdbg, "%s ", dbg_strdate(stime));
@@ -80,21 +80,50 @@ void dbgprint(const char *fname, const char *fmt, ...)
 	fflush(sdbg);
 }
 
-void debug_print_buffer(const void *data, int len, const char *fname, 
-			const char *fmt, ...)
-{ 
-	int i; 
+//Print file name & line  number
+void dbgprintfilelineinfo(const char *filename,int line_num,const char *fname, const char *fmt, ...)
+{
 	char s[1024];
-        va_list args;
- 
-        va_start(args, fmt);
-        vsprintf(s, fmt, args);
-        fprintf(sdbg, "%s: %s", fname, s);
-        va_end(args);
-	for (i = 0; i < len; i++) { 
+	char stime[1024];
+	va_list args;
+	char *filenametm = NULL;
+
+	va_start(args, fmt);
+	vsprintf(s, fmt, args);
+	va_end(args);
+
+	memset(stime, '\0', sizeof(stime));
+	fprintf(sdbg, "%s ", dbg_strdate(stime));
+	fprintf(sdbg, "%s ", dbg_strdate(stime));
+	if (strrchr(filename,'/'))
+	{
+		filenametm = (strrchr(filename,'/') + 1);
+	}
+	else
+		filenametm = filename;
+
+	if (fname)
+		fprintf(sdbg, "[%s %d] %s: ",filenametm,line_num, fname);
+	fprintf(sdbg, "%s", s);
+	fflush(sdbg);
+}
+
+
+void debug_print_buffer(const void *data, int len, const char *fname,
+		const char *fmt, ...)
+{
+	int i;
+	char s[1024];
+	va_list args;
+
+	va_start(args, fmt);
+	vsprintf(s, fmt, args);
+	fprintf(sdbg, "%s: %s", fname, s);
+	va_end(args);
+	for (i = 0; i < len; i++) {
 		if (i % 16 == 0) fprintf(sdbg, "\n%04x: ", i);
 		fprintf(sdbg, "%02x ", ((unsigned char *)data)[i]);
-	} 
+	}
 	fprintf(sdbg, "\n\n");
 	fflush(sdbg);
 }

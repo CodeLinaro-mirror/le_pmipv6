@@ -413,6 +413,7 @@ int ndisc_do_dad(int ifi, struct in6_addr *addr, int do_ll)
 	int hoplimit, sock = -1, ret, val = 1, err = -1;
 	fd_set rset;
 	struct timeval tv;
+	unsigned char source_mac_addr [PMIP_MAC_ADDR_LEN];
 
 	ICMP6_FILTER_SETBLOCKALL(&filter);
 	ICMP6_FILTER_SETPASS(ND_NEIGHBOR_ADVERT, &filter);
@@ -479,7 +480,7 @@ int ndisc_do_dad(int ifi, struct in6_addr *addr, int do_ll)
 			continue;
 		/* We got an ICMPv6 packet */
 		ret = icmp6_recv(sock, msg, sizeof(msg), &saddr, 
-				 &pinfo, &hoplimit);
+				 &pinfo, &hoplimit, &source_mac_addr);
 		if (ret < 0)
 			continue;
 		hdr = (struct nd_neighbor_advert *)msg;

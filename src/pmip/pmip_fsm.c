@@ -38,18 +38,27 @@
 
 extern struct mip6_config conf;
 
+//---------------------------------------------------------------------------------------------------------------------
+int pending_pbu_seq_list_init(void)
+{
+	dbg(":pending_pbu_seq_list_init\n");
+	//memset(&conf->pbu_list, 0, sizeof(conf->pbu_list));
+	//INIT_LIST_HEAD(&conf->pbu_list.list);
+	INIT_LIST_HEAD(&conf.pbu_list);
+	return 1;
+}
 
 
 //---------------------------------------------------------------------------------------------------------------------
 int mag_init_fsm(void)
 {
-	if (conf.pmip_mode_type == IP_FAMILY_V6_V01) {
+	if (conf.pmip_mode_type == IP_FAMILY_V6_V01 || conf.pmip_mode_type == IP_FAMILY_V4V6_V01) {
 		if (pthread_rwlock_init(&fsm_lock, NULL))
 			return -1;
 		else
 			return 0;
 	}
-	if (conf.pmip_mode_type == IP_FAMILY_V4_V01) {
+	if (conf.pmip_mode_type == IP_FAMILY_V4_V01 || conf.pmip_mode_type == IP_FAMILY_V4V6_V01) {
 		if (pthread_rwlock_init(&fsm_v4_lock, NULL))
 			return -1;
 		else
@@ -66,6 +75,7 @@ int mag_fsm(msg_info_t * info)
 	struct in6_addr hw_address = info->mn_hw_address;
 	int type = pmip_cache_exists(&conf.OurAddress, &hw_address);
 	int mutex_return_code;
+	uint8_t       mac_addr[PMIP_MAC_ADDR_LEN];
 
 
 	mutex_return_code = pthread_rwlock_wrlock(&fsm_lock);
@@ -78,7 +88,10 @@ int mag_fsm(msg_info_t * info)
 			dbg("BCE_NO_ENTRY\n");
 			if (info->msg_event == hasRS) {
 				dbg("New MN is found sending RS, start new registration ...\n\n");
-				if (pmip_send_qcmap_dev_query(info->mn_iid, info->iif, &hw_address)){
+
+				ipv6_to_mac(&hw_address, mac_addr);
+				dbg("---fsm v6 mac to send: %02x:%02x:%02x:%02x:%02x:%02x\n",mac_addr[0],mac_addr[1],mac_addr[2],mac_addr[3],mac_addr[4],mac_addr[5]);
+				if (pmip_send_qcmap_dev_query(info->iif, &hw_address, 0)){
 					dbg("QCMAP Acknowledged Device. Add BCE and send PBU\n");
 					bce = pmip_cache_alloc(BCE_TEMP);
 					prefix = mnid_hnp_map(hw_address, &aaa_result);
@@ -87,7 +100,7 @@ int mag_fsm(msg_info_t * info)
 						bce->mn_suffix = info->mn_iid;
 						bce->mn_hw_address = hw_address;
 						info->mn_prefix = prefix;
-						result = mag_pmip_md(info, bce);
+						result = mag_pmip_md(info, bce, 0);
 						dbg("Movement detection is finished, now going to add an entry into the cache\n\n");
 						pmip_cache_add(bce);
 						dbg("pmip_cache_add is done \n\n");
@@ -107,7 +120,7 @@ int mag_fsm(msg_info_t * info)
 					bce->mn_suffix = info->mn_iid;
 					bce->mn_hw_address = hw_address;
 					info->mn_prefix = prefix;
-					result = mag_pmip_md(info, bce);
+					result = mag_pmip_md(info, bce, 0);
 					dbg("Movement detection is finished, now going to add an entry into the cache\n\n");
 					pmip_cache_add(bce);
 					dbg("pmip_cache_add is done \n\n");
@@ -125,7 +138,7 @@ int mag_fsm(msg_info_t * info)
 			dbg("BCE_TEMP\n");
 			if (info->msg_event == hasPBA) {
 				bce = pmip_cache_get(&conf.OurAddress, &hw_address);
-				if (is_pba_is_response_to_last_pbu_sent(info, bce)) {
+				if (is_pba_is_response_to_valid_pbu_seq_number(info, bce)) {
 					dbg("Handling PBA. Moving from BCE_TEMP to BCE_PMIP\n");
 					dbg("Finish Location Registration\n");
 					//Modify the entry with additional info.
@@ -151,7 +164,7 @@ int mag_fsm(msg_info_t * info)
 					}
 					dbg("Prefix before ending registration : %x:%x:%x:%x:%x:%x:%x:%x \n", NIP6ADDR(&bce->mn_prefix));
 					// LG COMMENT GOT PREFIX BY RADIUS - bce->mn_prefix = info->mn_prefix;   //adding the hn prefix value receive in PBA to MAG cache
-					mag_end_registration(bce, info->iif);
+					mag_end_registration(bce, info->iif, 0);
 				}
 				pmipcache_release_entry(bce);
 			}
@@ -168,7 +181,7 @@ int mag_fsm(msg_info_t * info)
 				dbg("RA sent after router solicitation ...\n");
 			} else if (info->msg_event == hasPBA) {
 				bce = pmip_cache_get(&conf.OurAddress, &hw_address);
-				if (is_pba_is_response_to_last_pbu_sent(info, bce)) {
+				if (is_pba_is_response_to_valid_pbu_seq_number(info, bce)) {
 					dbg("Finish Location Registration\n");
 					//Modify the entry with additional info.
 					del_task(&bce->tqe);    //Delete timer retransmission PBU (if any)
@@ -190,7 +203,7 @@ int mag_fsm(msg_info_t * info)
 					}
 					dbg("Prefix before ending registration : %x:%x:%x:%x:%x:%x:%x:%x \n", NIP6ADDR(&bce->mn_prefix));
 					// LG COMMENT GOT PREFIX BY RADIUS - bce->mn_prefix = info->mn_prefix;   //adding the hn prefix value receive in PBA to MAG cache
-					mag_end_registration_no_new_tunnel(bce, info->iif);
+					mag_end_registration_no_new_tunnel(bce, info->iif, 0);
 				}
 				pmipcache_release_entry(bce);
 			} else if (info->msg_event == hasWLCCP) {
@@ -200,14 +213,14 @@ int mag_fsm(msg_info_t * info)
 				mag_kickoff_ra(bce);
 				// Some case where the access point did not detect the departure of the mobile node
 				// so we have to register again to the LMA
-				mag_force_update_registration(bce, info->iif);
+				mag_force_update_registration(bce, info->iif, 0);
 				pmipcache_release_entry(bce);
 				dbg("RA sent after MN AP detection ...\n");
 			} else if (info->msg_event == hasDEREG) {
 				dbg("Deregistration procedure detected by Wireless Access Point for a registered MN\n");
 				dbg("Start Location Deregistration\n");
 				bce = pmip_cache_get(&conf.OurAddress, &hw_address);
-				mag_dereg(bce, 1);
+				mag_dereg(bce, 1, 0);
 				pmipcache_release_entry(bce);
 				pmip_bce_delete(bce);
 			} else if (info->msg_event == hasNA) {
@@ -216,7 +229,7 @@ int mag_fsm(msg_info_t * info)
 				bce->n_rets_counter = conf.MaxMessageRetransmissions;    //Reset the Retransmissions Counter.
 				dbg("Reset the Reachability Counter = %d for %x:%x:%x:%x:%x:%x:%x:%x\n", bce->n_rets_counter, NIP6ADDR(&info->mn_iid));
 				del_task(&bce->tqe);
-				mag_force_update_registration(bce, info->iif);
+				mag_force_update_registration(bce, info->iif, 0);
 				//pmip_cache_start(bce);
 				pmipcache_release_entry(bce);
 			}
@@ -260,7 +273,7 @@ int getipforclient(struct in_addr *addr)
 		ip = inet_ntoa(*addr);
 	}
 	temp.s_addr=conf.current_ip;
-	dbg ("Going to reserve %s ip for connection & ",ip);
+	dbg ("Going to reserve %s ip for connection\n",ip);
 	dbg("the new available current ip %s\n",inet_ntoa(temp));
 
 	return 1;
@@ -333,6 +346,7 @@ int is_requested_ip_in_same_range(struct in_addr request_ip)
 	return 0;
 }
 
+
 //---------------------------------------------------------------------------------------------------------------------
 int mag_fsm_v4(msg_info_t * info)
 {
@@ -376,7 +390,7 @@ int mag_fsm_v4(msg_info_t * info)
 		case BCE_NO_ENTRY:
 			dbg("BCE_NO_ENTRY\n");
 			if (info->msg_event == hasDHCPDIS) {
-				if (pmip_send_qcmap_dev_query(info->mn_iid, info->iif, &hw_address)) {
+				if (pmip_send_qcmap_dev_query(info->iif, &hw_address, 1)) {
 					dbg("QCMAP Acknowledged Device. Add BCE and send PBU for ipv4\n");
 					dbg("New MN is found dhcp discover, start new registration \n");
 					//convert  mac to string
@@ -387,7 +401,7 @@ int mag_fsm_v4(msg_info_t * info)
 					bce = pmipv4_cache_alloc(BCE_TEMP);
 					bce->mn_suffix = info->mn_iid;
 					bce->mn_hw_address = hw_address;
-					result = mag_pmip_md(info, bce);
+					result = mag_pmip_md(info, bce, 1);
 					dbg("Movement detection is finished, now going to add an entry into the cache for v4\n\n");
 					pmipv4_cache_add(bce);
 					dbg("pmip_cache_add is done \n\n");
@@ -400,7 +414,7 @@ int mag_fsm_v4(msg_info_t * info)
 				}
 			}
 			else if (info->msg_event == hasDHCPREQ) {
-				if (pmip_send_qcmap_dev_query(info->mn_iid, info->iif, &hw_address)) {
+				if (pmip_send_qcmap_dev_query(info->iif, &hw_address, 1)) {
 					dbg("BCE_NO_ENTRY New MN dhcp Request ...\n");
 					dbg ("BCE_NO_ENTRY client requested ip =%s\n",inet_ntoa(info->dhcp_request_ip));
 					if (!is_requested_ip_in_same_range(info->dhcp_request_ip)) {
@@ -416,7 +430,7 @@ int mag_fsm_v4(msg_info_t * info)
 					bce->mn_suffix = info->mn_iid;
 					bce->mn_hw_address = hw_address;
 					bce->dhcp_requested_ip = info->dhcp_request_ip;
-					result = mag_pmip_md(info, bce);
+					result = mag_pmip_md(info, bce, 1);
 					dbg("DHCP REQUEST Movement detection is finished, now going to add an entry into the cache for v4\n\n");
 					pmipv4_cache_add(bce);
 				} else {
@@ -440,7 +454,7 @@ int mag_fsm_v4(msg_info_t * info)
 			if (info->msg_event == hasPBA) {
 				dbg("Recieved PBA from LMA for ipv4 after sending PBU\n");
 				bce = pmipv4_cache_get(&conf.OurAddress, &hw_address);
-				if (is_pba_is_response_to_last_pbu_sent(info, bce)) {
+				if (is_pba_is_response_to_valid_pbu_seq_number(info, bce)) {
 					//Checking for DMNP prefix verification
 					//Skiping for now
 					#if 0
@@ -474,7 +488,7 @@ int mag_fsm_v4(msg_info_t * info)
 							if (info->v4_home_addr_reply_status != 0 ) {
 								dbg("BCE_TEMP Invalid status code =%d for reply \n",info->v4_home_addr_reply_status);
 								dbg("sending PBU again with different ip request\n");
-								mag_start_registration(bce);
+								mag_start_registration(bce, 1);
 								break;
 							} else {
 								memcpy(home_prefix, inet_ntoa(info->v4_home_prefix), INET_ADDRSTRLEN);
@@ -518,7 +532,7 @@ int mag_fsm_v4(msg_info_t * info)
 								system("killall -1 dnsmasq");
 								system("killall -15 dnsmasq");
 								system("killall -9 dnsmasq");
-								system (command);
+								pmip_system_call(command,strlen(command),1);
 								conf.is_dnsmasq_started_on_pba = 1;
 								#if 0 //commenting this Code sine currenly DMNP prefix not being used
 								if (info->hasipv4_default_router_option) {
@@ -569,7 +583,7 @@ int mag_fsm_v4(msg_info_t * info)
 						if (info->v4_home_addr_reply_status != 0 ) {
 							dbg("BCE_TEMP Invalid status code for reply \n\n");
 							dbg("sending PBU again with different ip request");
-							mag_start_registration(bce);
+							mag_start_registration(bce, 1);
 							break;
 						}
 						else {
@@ -584,8 +598,7 @@ int mag_fsm_v4(msg_info_t * info)
 							dbg("Saving MN v4 ip so that while Sending next PBU this can be used\n");
 							bce->dhcp_requested_ip = bce->mnv4_addr;
 							snprintf(command, MAX_DHCP_COMMAND_STR_LEN,"echo %s,%s >> /etc/dhcp_hosts",macStr,inet_ntoa(info->v4_home_prefix));
-							dbg("registation comm=%s=\n",command);
-							system(command);
+							pmip_system_call(command,strlen(command),1);
 							//sending signal to dnsmasq to re-read hosts file
 							system("killall -1 dnsmasq");
 						}
@@ -610,7 +623,7 @@ int mag_fsm_v4(msg_info_t * info)
 					}
 					//dbg("Prefix before ending registration : %x:%x:%x:%x:%x:%x:%x:%x \n", NIP6ADDR(&bce->mn_prefix));
 					// LG COMMENT GOT PREFIX BY RADIUS - bce->mn_prefix = info->mn_prefix;   //adding the hn prefix value receive in PBA to MAG cache
-					mag_end_registration(bce, info->iif);
+					mag_end_registration(bce, info->iif, 1);
 					mag_update_binding_entry_with_DMNP_Home_addr(bce, info);
 				}
 				pmipv4cache_release_entry(bce);
@@ -626,8 +639,9 @@ int mag_fsm_v4(msg_info_t * info)
 			}
 			else if (info->msg_event == hasPBA) {
 				dbg("BCE_PMIP has PBA\n");
+
 				bce = pmipv4_cache_get(&conf.OurAddress, &hw_address);
-				if (is_pba_is_response_to_last_pbu_sent(info, bce)) {
+				if (is_pba_is_response_to_valid_pbu_seq_number(info, bce)) {
 					dbg("Finish Location Registration\n");
 					//Modify the entry with additional info.
 					del_task(&bce->tqe);    //Delete timer retransmission PBU (if any)
@@ -649,7 +663,7 @@ int mag_fsm_v4(msg_info_t * info)
 					}
 					//dbg("Prefix before ending registration : %x:%x:%x:%x:%x:%x:%x:%x \n", NIP6ADDR(&bce->mn_prefix));
 					// LG COMMENT GOT PREFIX BY RADIUS - bce->mn_prefix = info->mn_prefix;   //adding the hn prefix value receive in PBA to MAG cache
-					mag_end_registration_no_new_tunnel(bce, info->iif);
+					mag_end_registration_no_new_tunnel(bce, info->iif, 1);
 				}
 				pmipv4cache_release_entry(bce);
 			}
@@ -657,14 +671,16 @@ int mag_fsm_v4(msg_info_t * info)
 			else if (info->msg_event == hasDEREG) {
 				dbg("Deregistration procedure detected by Wireless Access Point for a registered MN\n");
 				dbg("Start Location Deregistration\n");
+
 				bce = pmipv4_cache_get(&conf.OurAddress, &hw_address);
-				mag_dereg(bce, 1);
+				mag_dereg(bce, 1, 1);
 				pmipv4cache_release_entry(bce);
 				pmipv4_bce_delete(bce);
 
 			}  else if (info->msg_event == hasARPReply) {
 				dbg("Has ARP reply\n");
 				//Reset counter, Delete task for entry deletion  & Add a new task for ARP expiry.
+
 				bce = pmipv4_cache_get(&conf.OurAddress, &hw_address);
 				if (bce->Is_arp_sent == 1)
 				{
@@ -673,7 +689,7 @@ int mag_fsm_v4(msg_info_t * info)
 					bce->Is_arp_sent = 0; //Reset arp flag
 					dbg("Reset the Reachability Counter = %d for %s\n", bce->n_rets_counter, inet_ntoa(bce->mnv4_addr));
 					del_task(&bce->tqe);
-					mag_force_update_registration(bce, info->iif);
+					mag_force_update_registration(bce, info->iif, 1);
 					//pmip_cache_start(bce);
 				}
 				else
@@ -714,11 +730,11 @@ int lma_fsm(msg_info_t * info)
 				bce = pmip_cache_alloc(BCE_PMIP);
 				if (bce != NULL) {
 					lma_get_prefix(hw_address,&(info->mn_prefix));
-					dbg("\nlma assigned  prefix %x:%x:%x:%x:%x:%x:%x:%x \n",NIP6ADDR(&info->mn_prefix));
+					dbg("lma assigned  prefix %x:%x:%x:%x:%x:%x:%x:%x \n",NIP6ADDR(&info->mn_prefix));
 					pmip_insert_into_hnp_cache(hw_address, info->mn_prefix);
-					lma_update_binding_entry(bce, info);   //Save information into bce
-					lma_update_binding_entry_with_DMNP_Home_addr(bce, info);
-					lma_reg(bce);
+					lma_update_binding_entry(bce, info, 0);   //Save information into bce
+					//lma_update_binding_entry_with_DMNP_Home_addr(bce, info);
+					lma_reg(bce, 0);
 					pmip_cache_add(bce);
 				}
 			} else if ((info->msg_event == hasPBU) && (info->lifetime.tv_sec == 0) && (info->lifetime.tv_nsec == 0)) {
@@ -735,53 +751,52 @@ int lma_fsm(msg_info_t * info)
 				bce = pmip_cache_get(&conf.OurAddress, &hw_address);
 				memset(&r_tmp1, 0, sizeof(struct in6_addr));
 				//if v6 serving Mag
-				if((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01) ||
-		((conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)))
+				if(conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
 				{
 				if (IN6_ARE_ADDR_EQUAL(&r_tmp1, &bce->mn_serv_mag_addr)) //Received PBU from serving MAG
 				{
-					lma_update_binding_entry(bce, info);
-					lma_reg(bce);
+					lma_update_binding_entry(bce, info, 0);
+					lma_reg(bce, 0);
 				} if (IN6_ARE_ADDR_EQUAL(&info->src, &bce->mn_serv_mag_addr) ) //Received PBU from serving MAG
 				{
-					lma_update_binding_entry(bce, info);
-					lma_reg_no_new_tunnel (bce);
+					lma_update_binding_entry(bce, info, 0);
+					lma_reg_no_new_tunnel (bce, 0);
 				} else { //Received PBU from an already unregistered MAG
 					dbg("Deregistration for previously registered MAG\n");
-					lma_dereg(bce, info, 0);
+					lma_dereg(bce, info, 0, 0);
 					bce->type = BCE_PMIP;
-					lma_update_binding_entry(bce, info);
-					lma_reg(bce);
+					lma_update_binding_entry(bce, info, 0);
+					lma_reg(bce, 0);
 				}
 				}
 				//if v4 serving mag
-				if  ((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01) ||
-		(conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01))
+				if  (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
 				{
 				if (bce->mn_serv_mag_v4_addr.s_addr == 0) //Received PBU from serving MAG
 				{
-					lma_update_binding_entry(bce, info);
-					lma_reg(bce);
+					lma_update_binding_entry(bce, info, 0);
+					lma_reg(bce, 0);
 				} if (info->srcv4.s_addr == bce->mn_serv_mag_v4_addr.s_addr ) //Received PBU from serving MAG
 				{
-					lma_update_binding_entry(bce, info);
-					lma_reg_no_new_tunnel (bce);
+					lma_update_binding_entry(bce, info, 0);
+					lma_reg_no_new_tunnel (bce, 0);
 				} else { //Received PBU from an already unregistered MAG
 					dbg("Deregistration for previously registered MAG\n");
-					lma_dereg(bce, info, 0);
+					lma_dereg(bce, info, 0, 0);
 					bce->type = BCE_PMIP;
-					lma_update_binding_entry(bce, info);
-					lma_reg(bce);
+					lma_update_binding_entry(bce, info, 0);
+					lma_reg(bce, 0);
 				}
 				}
 				pmipcache_release_entry(bce);
-			} else if (info->msg_event == hasPBU && info->lifetime.tv_sec == 0 && info->lifetime.tv_nsec == 0) {
+			}
+			else if (info->msg_event == hasPBU && info->lifetime.tv_sec == 0 && info->lifetime.tv_nsec == 0) {
 				dbg("PBU with Lifetime = 0... start Location Deregistration\n");
 				bce = pmip_cache_get(&conf.OurAddress, &hw_address);
 				if (IN6_ARE_ADDR_EQUAL(&info->src, &bce->mn_serv_mag_addr)) //Received PBU from serving MAG
 				{
 					dbg("Deregistration case...\n");
-					lma_dereg(bce, info, 1);
+					lma_dereg(bce, info, 1, 0);
 					pmipcache_release_entry(bce);
 					pmip_bce_delete(bce);
 				} else { //Received PBU from an already unregistered MAG
@@ -797,3 +812,107 @@ int lma_fsm(msg_info_t * info)
 	}
 	return result;
 }
+
+//---------------------------------------------------------------------------------------------------------------------
+int lma_fsm_v4(msg_info_t * info)
+{
+	struct in6_addr r_tmp1;
+	int result = 0;
+	pmip_entry_t *bce = NULL;
+
+	struct in6_addr hw_address = info->mn_hw_address;
+	int type = pmipv4_cache_exists(&conf.OurAddress, &hw_address);
+	switch (type) {
+		//--------------------------------------
+		case BCE_NO_ENTRY:
+			dbg("No PMIP entry found for %x:%x:%x:%x:%x:%x:%x:%x ... \n",
+					NIP6ADDR(&info->mn_hw_address));
+			if (info->msg_event == hasPBU && (info->lifetime.tv_sec > 0)) {
+				//Create New Proxy Binding Entry storing information
+				dbg("PBU for a new MN ... Location Registration starting now...\n");
+				bce = pmip_cache_alloc(BCE_PMIP);
+				if (bce != NULL) {
+					lma_get_prefix(hw_address,&(info->mn_prefix));
+					dbg("\nlma assigned  prefix %x:%x:%x:%x:%x:%x:%x:%x \n",NIP6ADDR(&info->mn_prefix));
+					pmip_insert_into_hnp_cache(hw_address, info->mn_prefix);
+					lma_update_binding_entry(bce, info, 1);   //Save information into bce
+					lma_update_binding_entry_with_DMNP_Home_addr(bce, info);
+					lma_reg(bce, 1);
+					pmipv4_cache_add(bce);
+				}
+			} else if ((info->msg_event == hasPBU) && (info->lifetime.tv_sec == 0) && (info->lifetime.tv_nsec == 0)) {
+				dbg("PBU with Lifetime = 0 for a not-registered MN... \n");
+				// LG Comment lma_dereg(bce, info, 0);
+				// LG Comment pmipcache_release_entry(bce);
+			}
+
+			break;
+			//--------------------------------------
+		case BCE_PMIP:
+			if ((info->msg_event == hasPBU) && (info->lifetime.tv_sec > 0)) {
+				dbg("PBU for an existing MN ... update serving MAG\n");
+				bce = pmipv4_cache_get(&conf.OurAddress, &hw_address);
+				memset(&r_tmp1, 0, sizeof(struct in6_addr));
+				//if v6 serving Mag
+				if(conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
+				{
+				if (IN6_ARE_ADDR_EQUAL(&r_tmp1, &bce->mn_serv_mag_addr)) //Received PBU from serving MAG
+				{
+					lma_update_binding_entry(bce, info, 1);
+					lma_reg(bce, 1);
+				} if (IN6_ARE_ADDR_EQUAL(&info->src, &bce->mn_serv_mag_addr) ) //Received PBU from serving MAG
+				{
+					lma_update_binding_entry(bce, info, 1);
+					lma_reg_no_new_tunnel (bce, 1);
+				} else { //Received PBU from an already unregistered MAG
+					dbg("Deregistration for previously registered MAG\n");
+					lma_dereg(bce, info, 0, 1);
+					bce->type = BCE_PMIP;
+					lma_update_binding_entry(bce, info, 1);
+					lma_reg(bce, 1);
+				}
+				}
+				//if v4 serving mag
+				if  (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
+				{
+				if (bce->mn_serv_mag_v4_addr.s_addr == 0) //Received PBU from serving MAG
+				{
+					lma_update_binding_entry(bce, info, 1);
+					lma_reg(bce, 1);
+				} if (info->srcv4.s_addr == bce->mn_serv_mag_v4_addr.s_addr ) //Received PBU from serving MAG
+				{
+					lma_update_binding_entry(bce, info, 1);
+					lma_reg_no_new_tunnel (bce, 1);
+				} else { //Received PBU from an already unregistered MAG
+					dbg("Deregistration for previously registered MAG\n");
+					lma_dereg(bce, info, 0, 1);
+					bce->type = BCE_PMIP;
+					lma_update_binding_entry(bce, info, 1);
+					lma_reg(bce, 1);
+				}
+				}
+				pmipv4cache_release_entry(bce);
+			}
+			else if (info->msg_event == hasPBU && info->lifetime.tv_sec == 0 && info->lifetime.tv_nsec == 0) {
+				dbg("PBU with Lifetime = 0... start Location Deregistration\n");
+				bce = pmipv4_cache_get(&conf.OurAddress, &hw_address);
+				if (IN6_ARE_ADDR_EQUAL(&info->src, &bce->mn_serv_mag_addr)) //Received PBU from serving MAG
+				{
+					dbg("Deregistration case...\n");
+					lma_dereg(bce, info, 1, 1);
+					pmipv4cache_release_entry(bce);
+					pmipv4_bce_delete(bce);
+				} else { //Received PBU from an already unregistered MAG
+					dbg("Deregistration for not registered MAG, doing nothing\n");
+					//lma_dereg(bce, info, 0);
+					pmipv4cache_release_entry(bce);
+				}
+			}
+			break;
+			//--------------------------------------
+		default:
+			dbg("No action for this event (%d) at current state (%d) !\n", info->msg_event, type);
+	}
+	return result;
+}
+

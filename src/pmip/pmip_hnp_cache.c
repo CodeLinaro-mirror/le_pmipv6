@@ -197,7 +197,7 @@ void pmip_lma_mn_to_hnp_cache_init(void)
 struct in6_addr lma_mnid_hnp_map(struct in6_addr mnid, int *result)
 {
     int j = 0;
-    dbg("Entering the address match . . ");
+    dbg("Entering the address match . . \n");
     dbg("Searching for MNID  %x:%x:%x:%x:%x:%x:%x:%x  \n", NIP6ADDR(&mnid));
     while (j < g_mn_count) {
         dbg("Comparing with MNID  %x:%x:%x:%x:%x:%x:%x:%x  \n", NIP6ADDR(&g_mn_hn_map[j].mn_iid));

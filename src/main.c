@@ -226,7 +226,13 @@ int main(int argc, char **argv)
 	signal(SIGPIPE, terminate);
 
 	if (conf_parse(&conf, argc, argv))
+	{
+		system("echo 'pmip: conf parse failed. Exit ' > /dev/kmsg");
+		printf("\npmip: conf parse failed. Exit . Check dmesg for more detail\n");
 		return 1;
+	}
+
+	system("echo 'pmip: conf file/argument parse succeeded ' > /dev/kmsg");
 
 	if (conf.debug_level > 0)
 		logflags = LOG_PERROR;
@@ -352,11 +358,10 @@ int main(int argc, char **argv)
 					dbg("pmip_add_dnsmasq_v6dns_option failed\n");
 				}
 			}
-			dbg("main dnsmasq command =%s=",command);
-			system(command);
+			pmip_system_call(command,strlen(command),1);
 		} else {
 
-			dbg("getting ip failed for %s", BRIDGE_IFACE);
+			dbg("getting ip failed for %s\n", BRIDGE_IFACE);
 		}
 
 		if (dhcp_init() < 0) {

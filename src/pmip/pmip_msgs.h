@@ -38,6 +38,8 @@
 #include "mh.h"
 //-----------------------------------------------------------------------------
 #include "pmip_cache.h"
+#include "conf.h"
+
 //-GLOBAL VARIABLES----------------------------------------------------------------------------
 /*! \var int g_mag_sequence_number
 \brief Sequence number to be used for constructing PBU messages on a MAG.
@@ -56,13 +58,13 @@ protected_pmip_msgs(void init_pbu_sequence_number(void);)
 */
 protected_pmip_msgs(int get_new_pbu_sequence_number(void);)
 
-/*! \fn int is_pba_is_response_to_last_pbu_sent(msg_info_t * , pmip_entry_t *)
+/*! \fn int is_pba_is_response_to_valid_pbu_seq_number(msg_info_t * , pmip_entry_t *)
 * \brief Check if a PBA response is the response to the last sent PBU, this function can be called only on a MAG.
 * \param[in]  pba_info The message information structure
 * \param[in]  bce      The binding cache entry
 * \return   1 if true, 0 if false.
 */
-protected_pmip_msgs(int is_pba_is_response_to_last_pbu_sent(msg_info_t * pba_info, pmip_entry_t *bce);)
+protected_pmip_msgs(int is_pba_is_response_to_valid_pbu_seq_number(msg_info_t * pba_info, pmip_entry_t *bce);)
 
 /*! \fn struct in6_addr get_node_id(struct in6_addr *)
 * \brief Translate a IPv6 address into a mobile interface identifier
@@ -209,7 +211,7 @@ protected_pmip_msgs(int icmp_na_parse(msg_info_t * info, struct nd_neighbor_adve
 * \return   Zero if success, negative value otherwise.
 */
 protected_pmip_msgs(int pmip_mh_send(const struct in6_addr_bundle *addrs, const struct iovec *mh_vec, int iovlen, int oif);)
-/*! \fn int mh_send_pbu(const struct in6_addr_bundle *, pmip_entry_t *, struct timespec *lifetime, int oif)
+/*! \fn int mh_send_pbu(const struct in6_addr_bundle *, pmip_entry_t *, struct timespec *lifetime, int oif, int is_v4_pmip_mode)
 * \brief Send PBU message.
 * \param[in]  addrs  Source and destination address of the message.
 * \param[in]  bce  Binding cache entry corresponding to the binding.
@@ -217,7 +219,7 @@ protected_pmip_msgs(int pmip_mh_send(const struct in6_addr_bundle *addrs, const 
 * \param[in]  oif  Outgoing interface identifier.
 * \return   Zero if success, negative value otherwise.
 */
-protected_pmip_msgs(int mh_send_pbu(void *addrs, pmip_entry_t * bce, struct timespec *lifetime, int oif);)
+protected_pmip_msgs(int mh_send_pbu(void *addrs, pmip_entry_t * bce, struct timespec *lifetime, int oif, int is_v4_pmip_mode);)
 /*! \fn int mh_send_pba(const struct in6_addr_bundle *, pmip_entry_t *, struct timespec *, int)
 * \brief Send PBA message.
 * \param[in]  addrs  Source and destination address of the message.
@@ -226,6 +228,12 @@ protected_pmip_msgs(int mh_send_pbu(void *addrs, pmip_entry_t * bce, struct time
 * \param[in]  oif  Outgoing interface identifier.
 * \return   Zero if success, negative value otherwise.
 */
-protected_pmip_msgs(int mh_send_pba(void *addrs, pmip_entry_t * bce, struct timespec *lifetime, int oif);)
+protected_pmip_msgs(int mh_send_pba(void *addrs, pmip_entry_t * bce, struct timespec *lifetime, int oif, int is_v4_lma_mode);)
+
+protected_pmip_msgs(int pending_pbu_seq_list_del(uint16_t pbu_seq_no);)
+protected_pmip_msgs(int pending_pbu_seq_list_add(uint16_t pbu_seq_no);)
+protected_pmip_msgs(struct pending_pbu_seq_list *get_pbu_seq_node(uint16_t pbu_seq_no);)
+protected_pmip_msgs(void *delete_pbu_seq_list();)
+
 #endif
 /** @}*/

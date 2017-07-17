@@ -30,17 +30,17 @@
  * Authors: OPENAIR3 <openair_tech@eurecom.fr>
  *
  * Copyright 2010-2011 EURECOM (Sophia-Antipolis, FRANCE)
- * 
- * Proxy Mobile IPv6 (or PMIPv6, or PMIP) is a network-based mobility 
- * management protocol standardized by IETF. It is a protocol for building 
- * a common and access technology independent of mobile core networks, 
- * accommodating various access technologies such as WiMAX, 3GPP, 3GPP2 
- * and WLAN based access architectures. Proxy Mobile IPv6 is the only 
+ *
+ * Proxy Mobile IPv6 (or PMIPv6, or PMIP) is a network-based mobility
+ * management protocol standardized by IETF. It is a protocol for building
+ * a common and access technology independent of mobile core networks,
+ * accommodating various access technologies such as WiMAX, 3GPP, 3GPP2
+ * and WLAN based access architectures. Proxy Mobile IPv6 is the only
  * network-based mobility management protocol standardized by IETF.
- * 
+ *
  * PMIP Proxy Mobile IPv6 for Linux has been built above MIPL free software;
  * which it involves that it is under the same terms of GNU General Public
- * License version 2. See MIPL terms condition if you need more details. 
+ * License version 2. See MIPL terms condition if you need more details.
  */
 
 #ifdef HAVE_CONFIG_H
@@ -124,13 +124,14 @@ static int conf_alt_file(char *filename, int argc, char **argv)
 
 	return 1;
 }
-	int ds_system_call
+int pmip_system_call
 (
  const char   *command,
- unsigned int  cmdlen
+ unsigned int  cmdlen,
+ int print_command
  )
 {
-	int result = 0;
+	int result = -1;
 	FILE *stream = NULL;
 	unsigned int vallen = strlen( command );
 
@@ -138,8 +139,8 @@ static int conf_alt_file(char *filename, int argc, char **argv)
 		dbg( "system call length mismatch: %d != %d\n", cmdlen, vallen );
 		return -1;
 	}
-
-	dbg("system call: %s\n", command);
+	if (print_command)
+		dbg("system call command: %s\n", command);
 
 	stream = popen( command, "w" );
 	if( stream == NULL )
@@ -147,10 +148,20 @@ static int conf_alt_file(char *filename, int argc, char **argv)
 		dbg("system command failed error num %d error msg is %s\n",errno, strerror(errno));
 		result = -1;
 	}
-	else if( 0 > pclose( stream ) )
+	else
+	{
+		result = pclose( stream );
+		if (WIFEXITED(result))
+		{
+			result = WIFEXITED(result);
+		}
+		else
 	{
 		dbg("pclose command failed\n");
 	}
+	}
+	if (result < 0)
+		dbg("system command failed, return=%d\n",result);
 
 	return result;
 }
@@ -163,17 +174,30 @@ static int conf_file(struct mip6_config *c, char *filename)
 
 	yyin = fopen(filename, "r");
 	if (yyin == NULL)
+	{
+		system("echo 'pmip: conf file open failed:error -ENOENT ' > /dev/kmsg");
 		return -ENOENT;
+	}
 
 	c->config_file = malloc(strlen(filename) + 1);
 	if (c->config_file == NULL)
+	{
+		system("echo 'pmip: No mem:error -ENOMEM ' > /dev/kmsg");
 		return -ENOMEM;
+	}
 	strcpy(c->config_file, filename);
 
 	ret = yyparse();
 
 	fclose(yyin);
-	if (ret) return -EINVAL;
+	if (ret)
+	{
+		//print message in dmesg if file parse failed
+		system("echo 'pmip: file parse failed' > /dev/kmsg");
+		return -EINVAL;
+	}
+
+	system("echo 'pmip: file parse ok' > /dev/kmsg");
 
 	return 0;
 }
@@ -228,13 +252,48 @@ static int conf_cmdline(struct mip6_config *cfg, int argc, char **argv)
 				break;
 			case 'm':
 				cfg->pmip_mode_type= atoi(optarg);
+				//checking valid pmip mode
+				if ((cfg->pmip_mode_type == IP_FAMILY_V4_V01) ||
+					(cfg->pmip_mode_type == IP_FAMILY_V6_V01) ||
+					(cfg->pmip_mode_type == IP_FAMILY_V4V6_V01))
+				{
+					system("echo 'pmip: valid pmip mode ' > /dev/kmsg");
 				break;
+
+				}
+				else
+				{
+					system("echo 'pmip: Invalid pmip mode ' > /dev/kmsg");
+					return -1;
+				}
 			case 'w':
 				cfg->pmipv4_work_mode_type= atoi(optarg);
+				//checking if pmipv4 work mode is valid
+				if ((cfg->pmipv4_work_mode_type == PMIPV4_MODE_CPE_V01) ||
+					(cfg->pmipv4_work_mode_type == PMIPV4_MODE_SECONDARY_ROUTER_V01))
+				{
+					system("echo 'pmip: valid pmip v4 work mode ' > /dev/kmsg");
 				break;
+				}
+				else
+				{
+					system("echo 'pmip: Invalid pmip v4 work mode ' > /dev/kmsg");
+					return -1;
+				}
 			case 't':
 				cfg->pmip_tunnel_mode= atoi(optarg);
+				//checking valid pmip tunnel mode
+				if ((cfg->pmip_tunnel_mode == IP_FAMILY_V4_V01) ||
+					(cfg->pmip_tunnel_mode == IP_FAMILY_V6_V01))
+				{
+					system("echo 'pmip: valid pmip Tunnel mode ' > /dev/kmsg");
 				break;
+				}
+				else
+				{
+					system("echo 'pmip: Invalid pmip Tunnel mode ' > /dev/kmsg");
+					return -1;
+				}
 			case 's':
 				inet_aton(optarg, &cfg->dhcp_start_ip);
 				break;

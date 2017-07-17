@@ -222,6 +222,7 @@ pmip_entry_t *pmipv4_cache_add(pmip_entry_t * bce)
 int __pmipv4cache_insert(pmip_entry_t * bce)
 {
 	int ret;
+
 	ret = hash_add(&g_pmipv4_hash, bce, &bce->our_addr, &bce->mn_hw_address);
 	if (ret) {
 		return ret;
@@ -232,12 +233,12 @@ int __pmipv4cache_insert(pmip_entry_t * bce)
 }
 int pmipv4_cache_start(pmip_entry_t * bce)
 {
-	dbg("PMIP cache start is initialized add task pmip_timer_bce_expired_handler in %d seconds\n", bce->lifetime.tv_sec);
+	dbg("PMIP cache start is initialized add task pmip_timer_bce_expired_handlerv4 in %d seconds\n", bce->lifetime.tv_sec);
 	struct timespec expires;
 	clock_gettime(CLOCK_REALTIME, &bce->add_time);
 	tsadd(bce->add_time, bce->lifetime, expires);
 
-	add_task_abs(&expires, &bce->tqe,  pmip_timer_bce_expired_handler);
+	add_task_abs(&expires, &bce->tqe,  pmip_timer_bce_expired_handlerv4);
 	return 0;
 }
 
@@ -301,6 +302,7 @@ void pmipv4cache_release_entry(pmip_entry_t * bce)
 	if (mutex_return_code != 0) {
 		dbg("pthread_rwlock_unlock(&pmip_v4_lock) %s\n", strerror(mutex_return_code));
 	}
+	dbg(":Done\n");
 }
 
 //---------------------------------------------------------------------------------------------------------------------

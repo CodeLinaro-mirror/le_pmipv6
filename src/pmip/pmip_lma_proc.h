@@ -58,13 +58,13 @@ protected_pmip_lma_proc(int lma_remove_route(struct in6_addr *pmip6_addr, int tu
 * \param[in]  bce A binding cache entry
 * \return    Zero if bce is not NULL, else -1
 */
-protected_pmip_lma_proc(int lma_reg(pmip_entry_t * bce);)
+protected_pmip_lma_proc(int lma_reg(pmip_entry_t * bce, int is_v4_lma_mode);)
 /*! \fn int lma_reg_no_new_tunnel(pmip_entry_t * bce)
 * \brief  Register a binding cache entry.
 * \param[in]  bce A binding cache entry
 * \return    Zero if bce is not NULL, else -1
 */
-protected_pmip_lma_proc(int lma_reg_no_new_tunnel(pmip_entry_t * bce);)
+protected_pmip_lma_proc(int lma_reg_no_new_tunnel(pmip_entry_t * bce, int is_v4_lma_mode);)
 /*! \fn int lma_dereg(pmip_entry_t * bce, msg_info_t * info, int propagate)
 * \brief  Deregister a binding cache entry
 * \param[in]  bce A binding cache entry
@@ -72,14 +72,14 @@ protected_pmip_lma_proc(int lma_reg_no_new_tunnel(pmip_entry_t * bce);)
 * \param[in]  propagate Deregistration to MAG
 * \return   the number of binding cache entries in the cache.
 */
-protected_pmip_lma_proc(int lma_dereg(pmip_entry_t * bce, msg_info_t * info, int propagate);)
+protected_pmip_lma_proc(int lma_dereg(pmip_entry_t * bce, msg_info_t * info, int propagate, int is_v4_lma_mode);)
 /*! \fn int lma_update_binding_entry(pmip_entry_t * bce, msg_info_t * info)
 * \brief Update a binding cache entry with received message informations
 * \param[in]  bce A binding cache entry
 * \param[in]  info Informations contained in the message received
 * \return   1 if a new tunnel must br created, else 0, if error in parameters return -1.
 */
-protected_pmip_lma_proc(int lma_update_binding_entry(pmip_entry_t * bce, msg_info_t * info);)
+protected_pmip_lma_proc(int lma_update_binding_entry(pmip_entry_t * bce, msg_info_t * info, int is_v4_lma_mode);)
 #endif
 /** @}*/
 

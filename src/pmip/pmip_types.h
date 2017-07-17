@@ -27,7 +27,6 @@
 
 #define PMIP_IPV6_ADDR_LEN 16
 #define PMIP_MAC_ADDR_LEN  6
-#define ETHER_ADDR_LEN 6
 #define QCMAP_MSGR_MAC_ADDR_NUM_CHARS_V01 18
 
 
@@ -153,8 +152,8 @@ typedef struct {
 * \brief Timestamp structure.
 */
 typedef struct {
-	__u32				first;
-	__u32				second;
+	__u8				first[6];
+	__u16				second;
 } ip6ts_t;
 
 

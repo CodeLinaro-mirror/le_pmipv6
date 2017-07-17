@@ -26,6 +26,10 @@ typedef enum {
 	PMIPV4_MODE_ENUM_MAX_ENUM_VAL_V01 = 2147483647 /**< To force a 32 bit signed enum.  Do not change or use*/
 }pmipv4_mode_enum_v01;
 
+struct pending_pbu_seq_list {
+	struct list_head list;
+	uint16_t pbu_seq_no;
+};
 
 
 struct mip6_config {
@@ -133,6 +137,7 @@ struct mip6_config {
 	char*           RadiusPassword;
 	char*           PcapSyslogAssociationGrepString;
 	char*           PcapSyslogDeAssociationGrepString;
+	struct list_head pbu_list;                //list to store pbu sequence number
 };
 
 struct net_iface {
@@ -153,11 +158,13 @@ extern struct mip6_config conf;
 #define MIP6_ENTITY_MAG 3
 #define MIP6_ENTITY_LMA 4
 
-int ds_system_call
+int pmip_system_call
 (
  const char   *command,
- unsigned int  cmdlen
- );
+ unsigned int  cmdlen,
+ int print_command
+);
+
 
 
 static inline int is_cn(void)

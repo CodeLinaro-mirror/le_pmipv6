@@ -631,8 +631,13 @@ int tunnelctlv4_init(void)
 static int tnlv4_cleanup(void *data, void *arg)
 {
 	struct mip4_tnl *tnl = (struct mip4_tnl *) data;
+	memset(&remote_v6, 0 , sizeof(struct in6_addr));
+	memset(&local_v6, 0 , sizeof(struct in6_addr));
+	
 	list_del(&tnl->list);
-	hash_delete(&tnlv4_hash, (struct in6_addr *)&tnl->parm.laddr, (struct in6_addr *)&tnl->parm.raddr);
+	ipv4_to_ipv6(&tnl->parm.raddr,&remote_v6);
+	ipv4_to_ipv6(&tnl->parm.laddr,&local_v6);
+	hash_delete(&tnlv4_hash,&local_v6,&remote_v6);
 	free(tnl);
 	close(tnl_fd4);
 	return 0;
@@ -650,6 +655,8 @@ static int __tunnelv4_del(struct mip4_tnl *tnl)
 {
 	int res = 0;
 	char command[100];
+	memset(&remote_v6, 0 , sizeof(struct in6_addr));
+	memset(&local_v6, 0 , sizeof(struct in6_addr));
 
 	tnl->users--;
 
@@ -662,11 +669,13 @@ static int __tunnelv4_del(struct mip4_tnl *tnl)
 	if (tnl->users == 0) {
 		struct ifreq ifr;
 		list_del(&tnl->list);
-		hash_delete(&tnlv4_hash, (struct in6_addr *)&tnl->parm.laddr, (struct in6_addr *)&tnl->parm.raddr);
+		ipv4_to_ipv6(&tnl->parm.raddr,&remote_v6);
+		ipv4_to_ipv6(&tnl->parm.laddr,&local_v6);
+		hash_delete(&tnlv4_hash, &local_v6, &remote_v6);
 		strcpy(ifr.ifr_name, tnl->parm.name);
 		snprintf (command,100,"ip tunnel delete %s",base4dev);
 		system (command);
-		dbg("Tunnel delete comm %s=",command);
+		dbg("Tunnel delete comm %s=\n",command);
 		TDBG("tunnel deleted\n");
 		free(tnl);
 	}
@@ -727,7 +736,7 @@ static struct mip4_tnl *__tunnel_addv44(struct in_addr *local,
 #define IP_DF		0x4000		/* Flag: "Don't Fragment"	*/
 #endif
 	tnl->parm.iph.frag_off = htons(IP_DF);
-	
+
 	tnl->parm.iph.protocol = IPPROTO_GRE;
 	tnl->users = 1;
 	//tnl->parm.flags = IP6_TNL_F_MIP6_DEV|IP6_TNL_F_IGN_ENCAP_LIMIT;
@@ -789,7 +798,7 @@ dbg("tun name =%s===",tnl->parm.name);
 	TDBG("created tunnel %s (%d) from %s \n",
 	     tnl->parm.name, tnl->ifindex,
 	     inet_ntoa(r1));
-	
+
 	r1.s_addr=tnl->parm.iph.daddr;
 	TDBG("                       to %s user count %d\n",
 	     inet_ntoa(r1),
@@ -840,24 +849,32 @@ static struct mip4_tnl *__tunnel_addv4(struct in_addr *local,
 	}
 	inet_ntop(AF_INET, local, tmpstr, INET_ADDRSTRLEN);
 	dbg("__tunnel_addv4 Enter WAN dev is %s\n",ifac);
+
 	//looks to be some bug in ip tunnel command. Ip tunnel add not providing LLipv6 address to interface
-	//creating temperary tunnel & deleting that once main tunnel is cerated successfully
-	system("ip t d ip4gre1");
+	//creating temperary tunnel & deleting that once main tunnel is created successfully
+	pmip_system_call("ip t d ip4gre1",strlen("ip t d ip4gre1"),1);
 	//snprintf(command,200,"ip tunnel add %s mode gre remote %s local %s ttl %d dev %s ikey %d okey %d",tnl->parm.name,tmpstr,inet_ntoa(*remote),tnl->parm.hop_limit,ifac,tnl->parm.i_key,tnl->parm.o_key);
 	//	ret=system(command);
 	snprintf(command,200,"ip tunnel add %s mode gre remote 1.2.3.4 local 3.4.5.6 ttl %d ikey %d okey %d",tnl->parm.name,tnl->parm.hop_limit,tnl->parm.i_key,tnl->parm.o_key);
-	ret=system(command);
+	pmip_system_call(command,strlen(command),1);
 		snprintf(command,200,"ip tunnel change %s remote %s local %s",tnl->parm.name,inet_ntoa(*remote),tmpstr);
-	ret=system(command);
-		dbg("sj: Ip/gre tunnel command with tempory tunnel=%s= \nrun status=%d \n",command,ret);
+	pmip_system_call(command,strlen(command),1);
 	snprintf(command,200,"ip link set %s up",tnl->parm.name);
-	system(command);
+	pmip_system_call(command,strlen(command),1);
+
+
+	pmip_system_call("ip t s",strlen("ip t s"),1);
 
 	if (!(tnl->ifindex = if_nametoindex(tnl->parm.name))) {
 		TDBG("no device called %s\n", tnl->parm.name);
 		goto err;
 	}
-	if (hash_add(&tnlv4_hash, tnl, (struct in6_addr *)&tnl->parm.laddr, (struct in6_addr *)&tnl->parm.raddr) < 0)
+	//convert ipv4 address to ipv6
+	ipv4_to_ipv6(&tnl->parm.raddr,&remote_v6);
+	ipv4_to_ipv6(&tnl->parm.laddr, &local_v6);
+	dbg("Local v4 ip %x,local con v6 ip %x:%x:%x:%x:%x:%x:%x:%x\n",tnl->parm.laddr.s_addr,NIP6ADDR(&local_v6));
+	dbg("Remote v4 ip %x,remote v6 ip %x:%x:%x:%x:%x:%x:%x:%x\n",tnl->parm.raddr.s_addr,NIP6ADDR(&remote_v6));
+	if (hash_add(&tnlv4_hash, tnl, &local_v6, &remote_v6) < 0)
 		goto err;
 
 	list_add_tail(&tnl->list, &tnlv4_list);
@@ -897,8 +914,13 @@ int tunnel_addv4(struct in_addr *local,
 	int res;
 	gre_info_type *gre_data;
 
+	memset(&remote_v6, 0 , sizeof(struct in6_addr));
+	memset(&local_v6, 0 , sizeof(struct in6_addr));
+	ipv4_to_ipv6(remote,&remote_v6);
+	ipv4_to_ipv6(local,&local_v6);
+
 	pthread_mutex_lock(&tnlv4_lock);
-	if ((tnl = hash_get(&tnlv4_hash, (struct in6_addr *)local, (struct in6_addr *)remote)) != NULL) {
+	if ((tnl = hash_get(&tnlv4_hash, &local_v6, &remote_v6)) != NULL) {
 		tnl->users++;
 		TDBG("tunnel %s (%d) from %s \n",
 				tnl->parm.name, tnl->ifindex,

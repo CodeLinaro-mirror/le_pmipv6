@@ -117,9 +117,9 @@ void pmip_pcap_msg_handler_deassociate(struct in6_addr mn_iidP, int iifP)
 	msg.mn_hw_address = mn_iidP;
 	msg.iif = iifP;
 	msg.msg_event = hasDEREG;
-	if (conf.pmip_mode_type ==  IP_FAMILY_V6_V01)
+	if ((conf.pmip_mode_type ==  IP_FAMILY_V6_V01) || (conf.pmip_mode_type ==  IP_FAMILY_V4V6_V01))
 		mag_fsm(&msg);
-	if (conf.pmip_mode_type ==  IP_FAMILY_V4_V01) {
+	if ((conf.pmip_mode_type ==  IP_FAMILY_V4_V01) || (conf.pmip_mode_type ==  IP_FAMILY_V4V6_V01)) {
 		dbg("pmip_pcap_msg_handler_deassociate mag_fsm_v4 called\n");
 		//remove dhcp registartion from /etc/dhcp_hosts
 		//convert  mac to string
@@ -128,8 +128,7 @@ void pmip_pcap_msg_handler_deassociate(struct in6_addr mn_iidP, int iifP)
 		dbg("pmip_pcap_msg_handler_deassociate mac address : %02x:%02x:%02x:%02x:%02x:%02x\n", mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
 		mac_addr_ntop(mac, (char *)&macStr);
 		snprintf(command, 200,"sed -i '/%s/d' /etc/dhcp_hosts",macStr);
-		dbg("pmip_pcap_msg_handler_deassociate sed command comm=%s= to delete reservation\n",command);
-		system(command);
+		pmip_system_call(command,strlen(command),1);
 		dbg("SIGUP signal send to dnsmasq\n");
 		system ("killall -1 dnsmasq");
     mag_fsm_v4(&msg);
@@ -181,6 +180,20 @@ void mac_addr_ntop(const uint8_t *mac, char *mac_addr_str)
 			mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
 	return;
 }
+
+void ipv4_to_ipv6(struct in_addr *v4_ip, struct in6_addr *v6_ip)
+{
+	memset(v6_ip,0,sizeof(struct in6_addr));
+	memcpy(&v6_ip->s6_addr[12],&v4_ip->s_addr,4);
+	return;
+}
+
+void ipv6_to_ipv4(const struct in6_addr * v6_ip, struct in_addr *v4_ip)
+{
+	memcpy(&v4_ip->s_addr,&v6_ip->s6_addr[12],4);
+	return;
+}
+
 
 int create_socket(unsigned int *sockfd)
 {
@@ -238,13 +251,11 @@ int create_server_socket(unsigned int* sockfd, char* file_path)
 
 int pmip_send_qcmap_dev_query
 (
- struct in6_addr mn_iidP,
  int iifP,
-  struct in6_addr *hw_addr
+  struct in6_addr *hw_addr,
+  int is_v4_pmip_mode
 )
 {
-	/*for now we will fill hw_addr (mac addr) rcvd from QCMAP and send back
-TODO: take given hw_addr from RS and comapre it to QCMAP received one*/
 	qcmap_pmip_sock_msg_t  send_dev_info;
 	qcmap_pmip_sock_msg_t  *send_dev_info_ptr;
 	struct sockaddr_un qcmap_pmip;
@@ -267,22 +278,21 @@ TODO: take given hw_addr from RS and comapre it to QCMAP received one*/
 
 	memset(ip6_addr_str, 0x0, INET6_ADDRSTRLEN);
 	memset((void*)&send_dev_info, 0x0, sizeof(qcmap_pmip_sock_msg_t));
+
 	//set pmip mode
-  send_dev_info.dev_info.pmip_mode = conf.pmip_mode_type;
-  if (conf.pmip_mode_type == IP_FAMILY_V6_V01)
-	{
-		send_dev_info.dev_info.isValidIPv6address = true;
-		memcpy(send_dev_info.dev_info.v6_addr, (void*)&mn_iidP, sizeof(struct in6_addr));
-	}
+	if(is_v4_pmip_mode == 1)
+		send_dev_info.dev_info.pmip_mode = IP_FAMILY_V4_V01;
+	else if(is_v4_pmip_mode == 0)
+		send_dev_info.dev_info.pmip_mode = IP_FAMILY_V6_V01;
 	else
-	{
-		dbg("Pmip is not in v6 mode so iid will not be used for authentication\n", 0, 0, 0);
+  send_dev_info.dev_info.pmip_mode = conf.pmip_mode_type;
+
+	dbg("Pmip is using Mac address for authentication\n", 0, 0, 0);
 		dbg("pmip_send_qcmap_dev_query enter\n", 0, 0, 0);
 		send_dev_info.dev_info.isValidMac= true;
 		ipv6_to_mac(hw_addr, send_dev_info.dev_info.mac_addr);
 		dbg("---pmip_send_qcmap_dev_query mac to send: %02x:%02x:%02x:%02x:%02x:%02x\n", send_dev_info.dev_info.mac_addr[0],send_dev_info.dev_info.mac_addr[1],send_dev_info.dev_info.mac_addr[2],send_dev_info.dev_info.mac_addr[3],send_dev_info.dev_info.mac_addr[4],send_dev_info.dev_info.mac_addr[5]);
 
-	}
 	send_dev_info.pmip_event = QCMAP_PMIP_QUERY_DEVICE_REQ;
 	if ((numBytes = sendto(qcmap_pmip_sockfd, (void *)&send_dev_info, sizeof(qcmap_pmip_sock_msg_t), 0,
 					(struct sockaddr *)&qcmap_pmip, len)) == -1)
@@ -318,49 +328,12 @@ TODO: take given hw_addr from RS and comapre it to QCMAP received one*/
 
 	if(send_dev_info_ptr->pmip_event == QCMAP_PMIP_QUERY_DEVICE_RESP)
 	{
-    if (conf.pmip_mode_type == IP_FAMILY_V6_V01)
-		{
-			if(send_dev_info_ptr->dev_info.isValidIPv6address != true)
-			{
-				dbg("Not a valid IP %d \n",send_dev_info_ptr->dev_info.isValidIPv6address, 0, 0);
-				return false;
-			}
-
-			inet_ntop(AF_INET6, send_dev_info_ptr->dev_info.v6_addr, ip6_addr_str, INET6_ADDRSTRLEN);
-			dbg("Received IP %s \n",ip6_addr_str, 0, 0);
-
-			mn_iidP_1 = get_node_id((struct in6_addr*)send_dev_info_ptr->dev_info.v6_addr);
-			dbg("after MN IID: %x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(&mn_iidP_1));
-
-			inet_ntop(AF_INET6, (uint8_t*)&mn_iidP_1, ip6_addr_str, INET6_ADDRSTRLEN);
-			dbg("mn_iid_1 %s \n",ip6_addr_str, 0, 0);
-
-			if(memcmp(&mn_iidP, &mn_iidP_1, sizeof(struct in6_addr))!=0)
-			{
-				dbg("IP not matching %s \n",ip6_addr_str, 0, 0);
-				//return false;
-			}
-
-			mac_addr_ntop((uint8_t *)send_dev_info_ptr->dev_info.mac_addr, (char *)&mac_addr_str);
-
-			dbg("Received mac:%s \n", mac_addr_str);
-
-			mac_to_ipv6(send_dev_info_ptr->dev_info.mac_addr,hw_addr);
-			inet_ntop(AF_INET6, (uint8_t*)hw_addr, ip6_addr_str, INET6_ADDRSTRLEN);
-			dbg("hw_address %s \n", ip6_addr_str, 0, 0);
-
-		}
-		else
-		{
-			dbg("Pmip is not in v6 mode so dont copy iid & hw address message in response\n", 0, 0, 0);
-		}
-
-     if (conf.pmip_mode_type == IP_FAMILY_V6_V01)
+		if (is_v4_pmip_mode == 0)
 		{
 
 			type = pmip_cache_exists(&conf.OurAddress, hw_addr);
 		}
-		else
+		else if(is_v4_pmip_mode == 1)
 		{
 			type = pmipv4_cache_exists(&conf.OurAddress, hw_addr);
 		}

@@ -8,6 +8,9 @@ typedef struct
 	uint32_t gre_key;
 }gre_info_type;
 
+struct in6_addr local_v6,remote_v6;
+
+
 int tunnel_add(struct in6_addr *local,
 		struct in6_addr *remote,
 		int link,

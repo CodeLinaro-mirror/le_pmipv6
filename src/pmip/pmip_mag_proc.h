@@ -87,13 +87,13 @@ protected_pmip_mag_proc(int mag_remove_route(struct in6_addr *pmip6_addr, int do
 * \param[in]  propagate Propagate deregistration to LMA
 * \return   Returns zero on success, negative otherwise.
 */
-protected_pmip_mag_proc(int mag_dereg(pmip_entry_t * bce, int propagate);)
+protected_pmip_mag_proc(int mag_dereg(pmip_entry_t * bce, int propagate, int is_v4_pmip_mode);)
 /*! \fn int mag_start_registration(pmip_entry_t *)
 * \brief  Start the Location Registration Procedure for a mobile node by sending a PBU to the LMA.
 * \param[in]  bce A binding cache entry
 * \return   Always Zero.
 */
-protected_pmip_mag_proc(int mag_start_registration(pmip_entry_t * bce);)
+protected_pmip_mag_proc(int mag_start_registration(pmip_entry_t * bce, int is_v4_pmip_mode);)
 /*! \fn int mag_end_registration(pmip_entry_t * bce, int )
 * \brief   End the Location Registration Procedure
 * \param[in]  bce A binding cache entry
@@ -101,7 +101,7 @@ protected_pmip_mag_proc(int mag_start_registration(pmip_entry_t * bce);)
 * \return   Always Zero.
 * \note     Creates a tunnel between MAG and LMA, set a route for uplink traffic towards LMA if the route does not exist, send a router advertisement to the mobile node, and finally set the route to reach the mobile node.
 */
-protected_pmip_mag_proc(int mag_end_registration(pmip_entry_t * bce, int iif);)
+protected_pmip_mag_proc(int mag_end_registration(pmip_entry_t * bce, int iif, int is_v4_pmip_mode);)
 /*! \fn int mag_force_update_registration(pmip_entry_t * bce, int )
 * \brief   Start the Location Registration Procedure for a mobile node by sending a PBU to the LMA.
 * \param[in]  bce A binding cache entry
@@ -111,7 +111,7 @@ protected_pmip_mag_proc(int mag_end_registration(pmip_entry_t * bce, int iif);)
 *           so when the mobile come back again, we have to register again to the LMA, in order to let LMA build
 *           a tunnel between LMA and this MAG.
 */
-protected_pmip_mag_proc(int mag_force_update_registration(pmip_entry_t * bce, int iif);)
+protected_pmip_mag_proc(int mag_force_update_registration(pmip_entry_t * bce, int iif, int is_v4_pmip_mode);)
 /*! \fn int mag_kickoff_ra(pmip_entry_t * bce)
 * \brief  Start sendind router advertisements to a mobile node.
 * \param[in]  bce A binding cache entry
@@ -151,6 +151,6 @@ private_pmip_mag_proc(int mag_update_binding_entry(pmip_entry_t * bce, msg_info_
 * \return   Always Zero.
 * \note   Initiate registration (send PBU) to the LMA.
 */
-protected_pmip_mag_proc(int mag_pmip_md(msg_info_t * info, pmip_entry_t * bce);)
+protected_pmip_mag_proc(int mag_pmip_md(msg_info_t * info, pmip_entry_t * bce, int is_v4_pmip_mode);)
 #endif
 /** @}*/

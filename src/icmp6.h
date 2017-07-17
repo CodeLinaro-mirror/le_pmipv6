@@ -12,6 +12,7 @@
 #include <net/ethernet.h>
 #include <errno.h>
 #include <string.h>
+#define PMIP_MAC_ADDR_LEN  6
 
 
 #define BRIDGE_IFACE "bridge0"
@@ -24,7 +25,8 @@ struct icmp6_handler {
 		      const struct in6_addr *src,
 		      const struct in6_addr *dst,
 		      int iif,
-		      int hoplimit);
+		      int hoplimit,
+		      unsigned char source_mac_addr [PMIP_MAC_ADDR_LEN]);
 };
 
 #ifdef FORWARD_DHCPV6_TO_TUNNEL
@@ -59,7 +61,7 @@ int icmp6_send(int oif, uint8_t hoplimit, const struct in6_addr *src,
 
 ssize_t icmp6_recv(int sock, unsigned char *msg, size_t msglen,
 		   struct sockaddr_in6 *addr, struct in6_pktinfo *pkt_info,
-		   int *hoplimit);
+		   int *hoplimit, unsigned char source_mac_addr [PMIP_MAC_ADDR_LEN]);
 
 void *icmp6_create(struct iovec *iov, uint8_t type, uint8_t code);
 

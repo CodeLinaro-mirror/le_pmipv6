@@ -30,6 +30,11 @@
 void pmip_timer_retrans_pbu_handler(struct tq_elem *tqe);
 //---------------------------------------------------------------------------------------------------------------------
 
+//---------------------------------------------------------------------------------------------------------------------
+void pmip_timer_retrans_pbu_handlerv4(struct tq_elem *tqe);
+//---------------------------------------------------------------------------------------------------------------------
+
+
 static int pmip_cache_get_prefix_match(void *data, void *arg, void *usr_data)
 	//---------------------------------------------------------------------------------------------------------------------
 {
@@ -195,27 +200,27 @@ int mag_remove_route(struct in6_addr *pmip6_addr, int downlink)
 	return res;
 }
 //---------------------------------------------------------------------------------------------------------------------
-int mag_dereg(pmip_entry_t * bce, int propagate)
+int mag_dereg(pmip_entry_t * bce, int propagate,int is_v4_pmip_mode)
 {
 	//Delete existing route & rule for the deleted MN
 	int res = 0;
 	bce->type = BCE_NO_ENTRY;
 
 	//v6 route delete if v6 tunnel
-	if (conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
+	if (!is_v4_pmip_mode && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
 	{
 		dbg("mag_dereg v6 route delete if v6 tunnel\n");
 		res = mag_remove_route(get_mn_addr(bce), bce->link);
 	}
 	//v6 route delete if v4 tunnel
-	if (conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
+	if (!is_v4_pmip_mode && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
 	{
 		dbg("mag_dereg v6 route delete if v4 tunnel\n");
 		res = mag_remove_v6_route(bce->mn_addr, "pmipv4");
 	}
 
 	//v4 route delete if v6 tunnel
-	if (conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
+	if (is_v4_pmip_mode == 1 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
 	{
 		dbg("mag_dereg v4 route delete if v6 tunnel\n");
 		mag_remove_v4_route(bce->mnv4_addr, "pmipv4");
@@ -223,15 +228,14 @@ int mag_dereg(pmip_entry_t * bce, int propagate)
 
 
 	//v4 route delete if v4 tunnel
-	if (conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
+	if (is_v4_pmip_mode == 1 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
 	{
 		dbg("mag_dereg v4 route delete if v4 tunnel\n");
 		mag_remove_v4_route(bce->mnv4_addr,"pmipv4");
 	}
 
 	//check if  v6 Tunnel is being used
-	if ((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01) ||
-			((conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)))
+	if (conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
 	{
 		int usercount = tunnel_getusers(bce->tunnel);
 		dbg("# of binding entries %d \n", usercount);
@@ -242,8 +246,7 @@ int mag_dereg(pmip_entry_t * bce, int propagate)
 		pmip_tunnel_del(bce->tunnel);
 	}
 	//check if  v4 Tunnel is being used
-	if ((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01) ||
-			(conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01))
+	if (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
 	{
 		//decrement users of old tunnel.
 		pmipv4_tunnel_del(bce->tunnel_v4);
@@ -253,24 +256,24 @@ int mag_dereg(pmip_entry_t * bce, int propagate)
 		dbg("Propagate the deregistration... \n");
 		struct in6_addr_bundle addrs;
 		struct in_addr_bundle addrs1;
+		memset(&addrs, 0, sizeof(addrs));
+		memset(&addrs1, 0, sizeof(addrs1));
 		struct timespec Lifetime = { 0, 0 };
 
-		if((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01) ||
-				((conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)))
+		if(conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
 		{
 			addrs.src = &conf.OurAddress;
 			addrs.dst = &conf.LmaAddress;
 			dbg("Create PBU for LMA for deregistration v6 ip....\n");
-			mh_send_pbu(&addrs, bce, &Lifetime, 0);
+			mh_send_pbu(&addrs, bce, &Lifetime, 0, is_v4_pmip_mode);
 		}
-		if ((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01) ||
-				(conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01))
+		if (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
 		{
 			//store v4 address in v6 format will parse back v4 while sending packet
 			addrs1.src = &conf.Magv4AddressEgress;
 			addrs1.dst = &conf.LmaV4Address;
 			dbg("Create PBU for LMA for deregistration v4 ip....\n");
-			mh_send_pbu(&addrs1, bce, &Lifetime, 0);
+			mh_send_pbu(&addrs1, bce, &Lifetime, 0, is_v4_pmip_mode);
 		}
 	}
 	//Delete PBU cache entry
@@ -278,28 +281,29 @@ int mag_dereg(pmip_entry_t * bce, int propagate)
 	return res;
 }
 //---------------------------------------------------------------------------------------------------------------------
-int mag_start_registration(pmip_entry_t * bce)
+int mag_start_registration(pmip_entry_t * bce, int is_v4_pmip_mode)
 {
 	//Create PBU and send to the LMA
 	struct in6_addr_bundle addrs;
 	struct in_addr_bundle addrs1;
+	memset(&addrs, 0, sizeof(addrs));
+	memset(&addrs1, 0, sizeof(addrs1));
 	struct timespec lifetime = { 10, 0 };
 
-	if((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01) ||
-			((conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)))
+	//if v6 tunnel
+	if(conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
 	{
 		addrs.src = &conf.MagAddressEgress;
 		addrs.dst = &conf.LmaAddress;
-		mh_send_pbu(&addrs, bce, &conf.PBULifeTime, 0);
+		mh_send_pbu(&addrs, bce, &conf.PBULifeTime, 0, is_v4_pmip_mode);
 
 	}
-	if ((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01) ||
-			(conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01))
+	if (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
 	{
 		//store v4 address in v6 format will parse back v4 while sending packet
 		addrs1.src = &conf.Magv4AddressEgress;
 		addrs1.dst = &conf.LmaV4Address;
-		mh_send_pbu(&addrs1, bce, &conf.PBULifeTime, 0);
+		mh_send_pbu(&addrs1, bce, &conf.PBULifeTime, 0, is_v4_pmip_mode);
 	}
 
 	// min 4 seconds, because lifetime is sent over the network in PBU divided by 4
@@ -310,12 +314,22 @@ int mag_start_registration(pmip_entry_t * bce)
 	clock_gettime(CLOCK_REALTIME, &bce->add_time);
 	tsadd(bce->add_time, conf.RetransmissionTimeOut, expires);
 
+	//if pmip mode is v6
+	if (!is_v4_pmip_mode)
+	{
+		dbg("Registered time for v6 pmip mode....\n");
 	add_task_abs(&expires, &bce->tqe, pmip_timer_retrans_pbu_handler);
+	}
+	if (is_v4_pmip_mode == 1)
+	{
+		dbg("Registered time for v4 pmip mode....\n");
+		add_task_abs(&expires, &bce->tqe, pmip_timer_retrans_pbu_handlerv4);
+	}
 	dbg("PBU Retransmissions Timer is registered....\n");
 	return 0;
 }
 //---------------------------------------------------------------------------------------------------------------------
-int mag_end_registration(pmip_entry_t * bce, int iif)
+int mag_end_registration(pmip_entry_t * bce, int iif, int is_v4_pmip_mode)
 {
 	char command[200];
 	int ret;
@@ -324,17 +338,16 @@ int mag_end_registration(pmip_entry_t * bce, int iif)
 	bce->n_rets_counter = conf.MaxMessageRetransmissions;
 	//Add task for entry expiry.
 	dbg("Timer for Expiry is initialized: %d(s)!\n", bce->lifetime.tv_sec);
-	if (conf.pmip_mode_type == IP_FAMILY_V4_V01)
+	if (is_v4_pmip_mode == 1)
 	{
 		pmipv4_cache_start(bce);
 	}
-	if(conf.pmip_mode_type == IP_FAMILY_V6_V01)
+	if(!is_v4_pmip_mode)
 	{
 		pmip_cache_start(bce);
 	}
 	//if v6 Tunnel
-	if ((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01) ||
-			((conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)))
+	if (conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
 	{
 		//create a tunnel between MAG and LMA.
 		bce->tunnel = pmip_tunnel_add(&conf.OurAddress, &conf.LmaAddress, iif, bce->gre_key_valid, bce->gre_key);
@@ -346,8 +359,7 @@ int mag_end_registration(pmip_entry_t * bce, int iif)
 		}
 	}
 	//if v4 tunnel
-	if  ((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01) ||
-			(conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01))
+	if  (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
 	{
 		//create a v4 tunnel between MAG and LMA.
 		bce->tunnel_v4 = pmipv4_tunnel_add(&conf.Magv4AddressEgress, &conf.LmaV4Address, iif, bce->gre_key_valid, bce->gre_key);
@@ -356,14 +368,14 @@ int mag_end_registration(pmip_entry_t * bce, int iif)
 	}
 
 	//ading Route for Ipv6 mn ip in v6 tunnel
-	if (conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
+	if (!is_v4_pmip_mode && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
 	{
 		mag_kickoff_ra(bce);
 		dbg("Adding route for : %x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(get_mn_addr(bce)));
 		mag_setup_route(get_mn_addr(bce), bce->link);
 	}
 	//ading Route for Ipv6 ip in v4 tunnel
-	if (conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
+	if (!is_v4_pmip_mode && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
 	{
 		mag_kickoff_ra(bce);
 		dbg("Adding route for : %x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(get_mn_addr(bce)));
@@ -384,7 +396,7 @@ int mag_end_registration(pmip_entry_t * bce, int iif)
 	}
 
 	//ading Route for Ipv4 mn ip in v6 tunnel
-	if (conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01 )
+	if (is_v4_pmip_mode == 1 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01 )
 	{
 		//get tunnel Iface name
 		ret = tunnel_getname(bce->tunnel,fname);
@@ -404,7 +416,7 @@ int mag_end_registration(pmip_entry_t * bce, int iif)
 
 	}
 	//ading Route for Ipv4 mn ip in v4 tunnel
-	if (conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01 )
+	if (is_v4_pmip_mode == 1 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01 )
 	{
 		ret = tunnelv4_getname(bce->tunnel_v4,fname);
 		if (ret == 0)
@@ -417,7 +429,7 @@ int mag_end_registration(pmip_entry_t * bce, int iif)
 			//add Route
 			snprintf (command,200,"ip route add default dev %s table pmipv4", fname);
 			system (command);
-			dbg("sj: Route table com=%s=\n",command);
+			dbg("Route table com=%s=\n",command);
 			ret = mag_setup_v4_route(bce->mnv4_addr,"pmipv4");
 			dbg ("mag_setup_v4_route Route status %d\n",ret);
 		}
@@ -430,7 +442,7 @@ int mag_end_registration(pmip_entry_t * bce, int iif)
 	return 0;
 }
 //---------------------------------------------------------------------------------------------------------------------
-int mag_end_registration_no_new_tunnel(pmip_entry_t * bce, int iif)
+int mag_end_registration_no_new_tunnel(pmip_entry_t * bce, int iif, int is_v4_pmip_mode)
 {
 	//Force the BCE type.
 	bce->type = BCE_PMIP;
@@ -439,13 +451,13 @@ int mag_end_registration_no_new_tunnel(pmip_entry_t * bce, int iif)
 	bce->n_rets_counter = conf.MaxMessageRetransmissions;
 	//Add task for entry expiry.
 	dbg("Timer for Expiry is initialized: %d(s)!\n", bce->lifetime.tv_sec);
-	if (conf.pmip_mode_type == IP_FAMILY_V6_V01)
+	if (!is_v4_pmip_mode)
 	{
 		dbg("mag_end_registration_no_new_tunnel v6 case\n");
 		pmip_cache_start(bce);
 		mag_kickoff_ra(bce);
 	}
-	if (conf.pmip_mode_type == IP_FAMILY_V4_V01)
+	if (is_v4_pmip_mode == 1)
 	{
 		dbg("mag_end_registration_no_new_tunnel v4 case\n");
 		pmipv4_cache_start(bce);
@@ -457,7 +469,7 @@ int mag_end_registration_no_new_tunnel(pmip_entry_t * bce, int iif)
 	return 0;
 }
 //---------------------------------------------------------------------------------------------------------------------
-int mag_force_update_registration(pmip_entry_t * bce, int iif)
+int mag_force_update_registration(pmip_entry_t * bce, int iif,int is_v4_pmip_mode)
 {
 	//int mutex_return_code;
 
@@ -478,22 +490,22 @@ int mag_force_update_registration(pmip_entry_t * bce, int iif)
 	//Create PBU and send to the LMA
 	struct in6_addr_bundle addrs;
 	struct in_addr_bundle addrs1;
+	memset(&addrs, 0, sizeof(addrs));
+	memset(&addrs1, 0, sizeof(addrs1));
 
-	if ((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01) ||
-			((conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)))
+	if (conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
 	{
 		addrs.src = &conf.MagAddressEgress;
 		addrs.dst = &conf.LmaAddress;
-		mh_send_pbu(&addrs, bce, &conf.PBULifeTime, 0);
+		mh_send_pbu(&addrs, bce, &conf.PBULifeTime, 0, is_v4_pmip_mode);
 
 	}
-	if  ((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01) ||
-			(conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01))
+	if  (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
 	{
 		//store v4 address in v6 format will parse back v4 while sending packet
 		addrs1.src = &conf.Magv4AddressEgress;
 		addrs1.dst = &conf.LmaV4Address;
-		mh_send_pbu(&addrs1, bce, &conf.PBULifeTime, 0);
+		mh_send_pbu(&addrs1, bce, &conf.PBULifeTime, 0, is_v4_pmip_mode);
 	}
 
 	//struct timespec lifetime = { 3, 0 };
@@ -501,7 +513,10 @@ int mag_force_update_registration(pmip_entry_t * bce, int iif)
 	struct timespec expires;
 	clock_gettime(CLOCK_REALTIME, &bce->add_time);
 	tsadd(bce->add_time, conf.RetransmissionTimeOut, expires);
+	if (is_v4_pmip_mode == 0)
 	add_task_abs(&expires, &bce->tqe, pmip_timer_retrans_pbu_handler);
+	else if (is_v4_pmip_mode ==1)
+		add_task_abs(&expires, &bce->tqe, pmip_timer_retrans_pbu_handlerv4);
 	dbg("PBU Retransmissions Timer is registered....\n");
 	return 0;
 }
@@ -754,6 +769,7 @@ int mag_update_binding_entry(pmip_entry_t * bce, msg_info_t * info)
 	bce->mn_hw_address = info->mn_hw_address;
 	bce->mn_prefix = info->mn_prefix;
 	bce->mn_addr = info->mn_addr;
+	dbg("mag_update_binding_entry v6 address: %x:%x:%x:%x:%x:%x:%x:%x, \n", NIP6ADDR(&bce->mn_addr));
 	bce->mn_link_local_addr = info->mn_link_local_addr;
 	bce->mn_serv_mag_addr = info->src;
 	bce->mn_serv_mag_v4_addr = info->srcv4;
@@ -764,23 +780,32 @@ int mag_update_binding_entry(pmip_entry_t * bce, msg_info_t * info)
 	return 0;
 }
 //---------------------------------------------------------------------------------------------------------------------
-int mag_pmip_md(msg_info_t * info, pmip_entry_t * bce)
+int mag_pmip_md(msg_info_t * info, pmip_entry_t * bce, int is_v4_pmip_mode)
 {
 	if (bce != NULL) {
 		bce->our_addr = conf.OurAddress;
 		bce->mn_suffix = info->mn_iid;
-		if (conf.pmip_mode_type == IP_FAMILY_V4_V01)
+		if (is_v4_pmip_mode == 1)
 		{
 			dbg("mag_pmip_md v4 ...\n");
 
 		}
-		if (conf.pmip_mode_type == IP_FAMILY_V6_V01)
+		if (!is_v4_pmip_mode)
 		{
+			dbg("mag_pmip_md v6 ...\n");
 			bce->mn_prefix = info->mn_prefix;
 			dbg("Making BCE entry in MAG with HN prefix  %x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(&bce->mn_prefix));
 		}
+		if (conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
+		{
 		bce->mn_serv_mag_addr = conf.OurAddress;
 		bce->mn_serv_lma_addr = conf.LmaAddress;
+		}
+		else
+		{
+			bce->mn_serv_mag_v4_addr = conf.Magv4AddressEgress;
+			bce->mn_serv_lma_v4_addr = conf.LmaV4Address;
+		}
 		bce->seqno_out = 0;
 		bce->PBU_flags = IP6_MH_BU_ACK | IP6_MH_BU_PR;
 		bce->link = info->iif;
@@ -788,7 +813,7 @@ int mag_pmip_md(msg_info_t * info, pmip_entry_t * bce)
 		bce->mn_link_local_addr = *link_local;  // link local address of MN
 		dbg("New attachment detected! Start Location Registration procedure...\n");
 		bce->type = BCE_TEMP;
-		mag_start_registration(bce);
+		mag_start_registration(bce, is_v4_pmip_mode);
 	}
 	return 0;
 }

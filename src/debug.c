@@ -94,7 +94,6 @@ void dbgprintfilelineinfo(const char *filename,int line_num,const char *fname, c
 
 	memset(stime, '\0', sizeof(stime));
 	fprintf(sdbg, "%s ", dbg_strdate(stime));
-	fprintf(sdbg, "%s ", dbg_strdate(stime));
 	if (strrchr(filename,'/'))
 	{
 		filenametm = (strrchr(filename,'/') + 1);

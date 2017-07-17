@@ -222,7 +222,6 @@ internal					{ return INTERNAL; }
 
 {addrv4}		{
 			int i;
-fprintf(stderr, "str=%s\n",yytext);
 			i = inet_pton(AF_INET, yytext, &yylval.addrv4);
 
 			if (i < 1) {
@@ -268,8 +267,7 @@ fprintf(stderr, "str=%s\n",yytext);
                         hex_digits[0] = yytext[15];
                         hex_digits[1] = yytext[16];
                         sscanf(hex_digits, "%02x", &i); 
-                        yylval.macaddr.s6_addr[15] = i & 0x000000FF; 
-                        printf("scan.l: %02x:%02x:%02x:%02x:%02x:%02x\n", yylval.macaddr.s6_addr[10], yylval.macaddr.s6_addr[11],yylval.macaddr.s6_addr[12],yylval.macaddr.s6_addr[13],yylval.macaddr.s6_addr[14],yylval.macaddr.s6_addr[15]);
+                        yylval.macaddr.s6_addr[15] = i & 0x000000FF;
 			return MACADDR;
 		}
 

@@ -302,7 +302,7 @@ int dhcp_arp_recv(int sock, unsigned char *buf, size_t msglen,
 	eh = (struct ether_header *) buf;
 
 	//stroing mac
-	memcpy(pkt_info->ether_shost,eh->ether_shost,ETHER_ADDR_LEN);
+	memcpy(pkt_info->ether_shost,eh->ether_shost,PMIP_MAC_ADDR_LEN);
 
 	//checking  packet Type
 	if (ntohs (eh->ether_type) == ETHERTYPE_ARP) {

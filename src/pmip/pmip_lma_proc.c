@@ -56,35 +56,33 @@ void enable_forwading(char *fname)
 
 }
 //---------------------------------------------------------------------------------------------------------------------
-int lma_reg(pmip_entry_t * bce)
+int lma_reg(pmip_entry_t * bce, int is_v4_lma_mode)
 {
 	char command[200];
-	struct in6_addr v6_ip;
+	struct in6_addr *v6_ip;
 	int ret;
 	char addr_buf[INET6_ADDRSTRLEN];
 	char fname[IFNAMSIZ]={0};
 	if (bce != NULL) {
-		if ((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01) ||
-				((conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)))
+	if (conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
 		{
 			//create a tunnel between MAG and LMA && add a route for peer address.
 			bce->tunnel = pmip_tunnel_add(&conf.OurAddress, &bce->mn_serv_mag_addr, bce->link, bce->gre_key_valid, bce->gre_key);
 
-}
-		if  ((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01) ||
-				(conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01))
+	}
+		if  (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
 		{
 			//create a tunnel between MAG and LMA && add a route for peer address.
 			//sj: manully using LMA v4 address some proplem in parsing need to fix
         bce->tunnel_v4 = pmipv4_tunnel_add(&conf.LmaV4Address, &bce->mn_serv_mag_v4_addr, bce->link, bce->gre_key_valid, bce->gre_key);
 		}
 		//ading Route for Ipv6 mn ip in v6 tunnel
-		if (conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
+		if (!is_v4_lma_mode && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
 		{
 			lma_setup_route(get_mn_addr(bce), bce->tunnel);
 		}
 			//ading Route for Ipv6 ip in v4 tunnel
-		if (conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
+		if (!is_v4_lma_mode && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
 		{
 			ret = tunnelv4_getname(bce->tunnel_v4,fname);
 			if (ret == 0)
@@ -97,15 +95,16 @@ int lma_reg(pmip_entry_t * bce)
 				//disble enable forwading As it is removing the default route
 				//enable_forwading(fname);
 			dbg("Got current Tunnel name =%s\n",fname);
+				v6_ip = get_mn_addr(bce);
 				//add Route
-				inet_ntop(AF_INET6, &v6_ip, addr_buf, INET6_ADDRSTRLEN);
+				inet_ntop(AF_INET6, v6_ip, addr_buf, INET6_ADDRSTRLEN);
 				snprintf (command,200,"ip -6 route add %s dev %s ", addr_buf, fname);
 				system (command);
-				dbg("sj: ip v6 Route table com=%s=",command);
+				dbg("ip v6 Route table com=%s=\n",command);
 			}
 		}
 		//ading Route for Ipv4 mn ip in v6 tunnel
-		if (conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01 )
+		if ((is_v4_lma_mode == 1) && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01 )
 		{
 			//get tunnel Iface name
 			ret = tunnel_getname(bce->tunnel, fname);
@@ -122,12 +121,12 @@ int lma_reg(pmip_entry_t * bce)
 				//add Route
 				snprintf (command,200,"ip route add %s dev %s ",inet_ntoa(bce->mnv4_addr), fname);
 				system (command);
-				dbg("sj: Route table com=%s=",command);
+				dbg("Route table com=%s=\n",command);
 			}
 
 		}
 		//ading Route for Ipv4 mn ip in v4 tunnel
-		if (conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01 )
+		if ((is_v4_lma_mode == 1) && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01 )
 		{
 			ret = tunnelv4_getname(bce->tunnel_v4, fname);
 			if (ret == 0)
@@ -149,25 +148,38 @@ int lma_reg(pmip_entry_t * bce)
 
 		bce->status = 0;        //PBU was Accepted!
 		//Add task for entry expiry.
+		if (!is_v4_lma_mode)
+		{
+			dbg("lma_reg pmip_cache_start\n");
 		pmip_cache_start(bce);
+		}
+		else if (is_v4_lma_mode == 1)
+		{
+			dbg("lma_reg pmipv4_cache_start\n");
+			pmipv4_cache_start(bce);
+		}
 		//Send a PBA to ack new serving MAG
 		dbg("Create PBA to new Serving MAG...\n");
 		struct in6_addr_bundle addrs;
 		struct in_addr_bundle addrs1;
+		memset(&addrs, 0, sizeof(addrs));
+		memset(&addrs1, 0, sizeof(addrs1));
 
-		if ((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01) ||
-				((conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)))
+		if (conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
 		{
 			addrs.src = &conf.OurAddress;
 			addrs.dst = &bce->mn_serv_mag_addr;
-			mh_send_pba(&addrs, bce, &bce->lifetime, 0);
+			mh_send_pba(&addrs, bce, &bce->lifetime, 0, is_v4_lma_mode);
 		}
-		if ((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01) ||
-				(conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01))
+		else if (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
 		{
         addrs1.src = &conf.LmaV4Address;
 			addrs1.dst = &bce->mn_serv_mag_v4_addr;
-			mh_send_pba(&addrs1, bce, &bce->lifetime, 0);
+			mh_send_pba(&addrs1, bce, &bce->lifetime, 0, is_v4_lma_mode);
+		}
+		else
+		{
+			dbg("invalid Tunnel mode\n");
 		}
 		return 0;
 	} else {
@@ -176,30 +188,44 @@ int lma_reg(pmip_entry_t * bce)
 	}
 }
 //---------------------------------------------------------------------------------------------------------------------
-int lma_reg_no_new_tunnel(pmip_entry_t * bce)
+int lma_reg_no_new_tunnel(pmip_entry_t * bce, int is_v4_lma_mode)
 {
 	if (bce != NULL) {
 		bce->status = 0;        //PBU was Accepted!
 		//Add task for entry expiry.
+		if (!is_v4_lma_mode)
+		{
+			dbg("lma_reg_no_new_tunnel pmip_cache_start\n");
 		pmip_cache_start(bce);
+		}
+		else if (is_v4_lma_mode == 1)
+		{
+			dbg("lma_reg_no_new_tunnel pmipv4_cache_start\n");
+			pmipv4_cache_start(bce);
+		}
 		//Send a PBA to ack new serving MAG
 		dbg("Create PBA to new Serving MAG...\n");
 		struct in6_addr_bundle addrs;
 		struct in_addr_bundle addrs1;
-		if ((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01) ||
-				((conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)))
+		dbg("done memset\n");
+		memset(&addrs, 0, sizeof(addrs));
+		memset(&addrs1, 0, sizeof(addrs1));
+		if (conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
 		{
 			addrs.src = &conf.OurAddress;
 			addrs.dst = &bce->mn_serv_mag_addr;
-			mh_send_pba(&addrs, bce, &bce->lifetime, 0);
+			mh_send_pba(&addrs, bce, &bce->lifetime, 0, is_v4_lma_mode);
 		}
-		if ((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01) ||
-				(conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01))
+		else if (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
 		{
 			//sj: manully using LMA v4 address some proplem in parsing need to fix
         addrs1.src = &conf.LmaV4Address;
 			addrs1.dst = &bce->mn_serv_mag_v4_addr;
-			mh_send_pba(&addrs1, bce, &bce->lifetime, 0);
+			mh_send_pba(&addrs1, bce, &bce->lifetime, 0, is_v4_lma_mode);
+		}
+		else
+		{
+			dbg("Invalid tunnel mode\n");
 		}
 		return 0;
 	} else {
@@ -208,12 +234,12 @@ int lma_reg_no_new_tunnel(pmip_entry_t * bce)
 	}
 }
 //---------------------------------------------------------------------------------------------------------------------
-int lma_dereg(pmip_entry_t * bce, msg_info_t * info, int propagate)
+int lma_dereg(pmip_entry_t * bce, msg_info_t * info, int propagate, int is_v4_lma_mode)
 {
 	int usercount = 0;
 	char command[200];
 	int ret;
-	struct in6_addr v6_ip;
+	struct in6_addr *v6_ip;
 	char addr_buf[INET6_ADDRSTRLEN];
 	char fname[IFNAMSIZ]={0};
 
@@ -222,14 +248,14 @@ int lma_dereg(pmip_entry_t * bce, msg_info_t * info, int propagate)
 		del_task(&bce->tqe);
 
 		//v6 route delete if v6 tunnel
-		if (conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
+		if (!is_v4_lma_mode && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
 		{
 		dbg("lma_dereg v6 route delete if v6 tunnel\n");
 		lma_remove_route(get_mn_addr(bce), bce->tunnel);
 		}
 
 		//v6 route delete if v4 tunnel
-		if (conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
+		if (!is_v4_lma_mode && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
 		{
 			dbg("lma_dereg v6 route delete if v4 tunnel\n");
 			ret = tunnelv4_getname(bce->tunnel_v4, fname);
@@ -239,16 +265,17 @@ int lma_dereg(pmip_entry_t * bce, msg_info_t * info, int propagate)
 			}
 			else
 			{
+				v6_ip = get_mn_addr(bce);
 				//delete Route
-				inet_ntop(AF_INET6, &v6_ip, addr_buf, INET6_ADDRSTRLEN);
+				inet_ntop(AF_INET6, v6_ip, addr_buf, INET6_ADDRSTRLEN);
 				snprintf (command,200,"ip -6 route del %s dev %s ", addr_buf, fname);
 				system (command);
-				dbg("sj: ip v6 Route table com=%s=",command);
+				dbg("ip v6 Route table com=%s=\n",command);
 			}
 		}
 
 		//Delete Route for Ipv4 mn ip in v6 tunnel
-		if (conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01 )
+		if ((is_v4_lma_mode == 1) && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01 )
 		{
 			//get tunnel Iface name
 			ret = tunnel_getname(bce->tunnel,fname);
@@ -261,12 +288,12 @@ int lma_dereg(pmip_entry_t * bce, msg_info_t * info, int propagate)
 				//Delete  Route
 				snprintf (command,200,"ip route del %s dev %s ",inet_ntoa(bce->mnv4_addr), fname);
 				system (command);
-				dbg("sj: Route table com=%s=",command);
+				dbg("Route table com=%s=\n",command);
 			}
 
 		}
 		//Delete Route for Ipv4 mn ip in v4 tunnel
-		if (conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01 )
+		if ((is_v4_lma_mode == 1) && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01 )
 		{
 			ret = tunnelv4_getname(bce->tunnel_v4,fname);
 			if (ret == 0)
@@ -279,13 +306,12 @@ int lma_dereg(pmip_entry_t * bce, msg_info_t * info, int propagate)
 				//Delete Route
 				snprintf (command,200,"ip route del %s dev %s ",inet_ntoa(bce->mnv4_addr), fname);
 				system (command);
-				dbg("sj: Route table com=%s=\n",command);
+				dbg("Route table com=%s=\n",command);
 			}
 		}
 
-
-		if ((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01) ||
-		((conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)))
+		//if v6 Tunnel
+		if (conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
 		{
 			//delete old route to old tunnel.
 			usercount = tunnel_getusers(bce->tunnel);
@@ -295,8 +321,9 @@ int lma_dereg(pmip_entry_t * bce, msg_info_t * info, int propagate)
 			//decrement users of old tunnel.
 			pmip_tunnel_del(bce->tunnel);
 		}
-		if  ((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01) ||
-		(conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01))
+
+		//if v4 tunnel
+		if  (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
 		{
 			//delete old route to old tunnel.
 			usercount = tunnelv4_getusers(bce->tunnel_v4);
@@ -308,23 +335,26 @@ int lma_dereg(pmip_entry_t * bce, msg_info_t * info, int propagate)
 			dbg("Create PBA for deregistration for MAG (%x:%x:%x:%x:%x:%x:%x:%x)\n", NIP6ADDR(&bce->mn_serv_mag_addr));
 			struct in6_addr_bundle addrs;
 			struct in_addr_bundle addrs1;
+			memset(&addrs, 0, sizeof(addrs));
+			memset(&addrs1, 0, sizeof(addrs1));
 			struct timespec lifetime = { 0, 0 };
-			if ((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01) ||
-					((conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)))
+			if (conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
 			{
 				addrs.src = &conf.LmaAddress;
 				addrs.dst = &bce->mn_serv_mag_addr;
 				bce->seqno_in = info->seqno;
-				mh_send_pba(&addrs, bce, &lifetime, 0);
+				mh_send_pba(&addrs, bce, &lifetime, 0, is_v4_lma_mode);
 			}
-			if  ((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01) ||
-					(conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01))
+			else if  (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
 			{
-				//sj: manully using LMA v4 address some proplem in parsing need to fix
 			addrs1.src = &conf.LmaV4Address;
 				addrs1.dst = &bce->mn_serv_mag_v4_addr;
 				bce->seqno_in = info->seqno;
-				mh_send_pba(&addrs1, bce, &lifetime, 0);
+				mh_send_pba(&addrs1, bce, &lifetime, 0, is_v4_lma_mode);
+			}
+			else
+			{
+				dbg("invalid tunnel mode\n");
 			}
 		} else {
 			dbg("Doing nothing....\n");
@@ -359,7 +389,7 @@ int lma_update_binding_entry_with_DMNP_Home_addr(pmip_entry_t * bce, msg_info_t 
 }
 
 //---------------------------------------------------------------------------------------------------------------------
-int lma_update_binding_entry(pmip_entry_t * bce, msg_info_t * info)
+int lma_update_binding_entry(pmip_entry_t * bce, msg_info_t * info, int is_v4_lma_mode)
 {
 	int result = 0;
 	int usercount = 0;
@@ -398,20 +428,20 @@ int lma_update_binding_entry(pmip_entry_t * bce, msg_info_t * info)
 							}
 							else
 							{
-							if (conf.pmip_mode_type == IP_FAMILY_V4_V01)
+								if (is_v4_lma_mode == 1)
 								{
 																//Delete  Route
 								snprintf (command,200,"ip route del %s dev %s ",inet_ntoa(bce->mnv4_addr), fname);
 								system (command);
-								dbg("sj: Route table com=%s=",command);
+								dbg("Route table com=%s=\n",command);
 								}
-							else if (conf.pmip_mode_type == IP_FAMILY_V6_V01)
+								if (!is_v4_lma_mode)
 								{
 								inet_ntop(AF_INET6, &bce->mn_addr, addr_buf, INET6_ADDRSTRLEN);
 								//Delete  Route
 								snprintf (command,200,"ip -6 route del %s dev %s ",addr_buf, fname);
 								system (command);
-								dbg("sj: Route table com=%s=",command);
+								dbg("Route table com=%s=\n",command);
 								}
 							}
 							//decrement users of old tunnel.
@@ -420,7 +450,7 @@ int lma_update_binding_entry(pmip_entry_t * bce, msg_info_t * info)
 
 						result = 1;
 					} else {
-						dbg("Same serving MAG: %x:%x:%x:%x:%x:%x:%x:%x, No need to delete tunnel\n", NIP6ADDR(&info->src));
+						dbg("Same serving MAG: %s, No need to delete tunnel\n", inet_ntoa(info->srcv4));
 						// to do here in future: cancel possible delete timer on this tunnel
 						result = 0;
 					}
@@ -430,10 +460,10 @@ int lma_update_binding_entry(pmip_entry_t * bce, msg_info_t * info)
 			}
 			if ((conf.pmip_tunnel_mode == IP_FAMILY_V6_V01))
 			{
-			if ((conf.pmip_mode_type== IP_FAMILY_V6_V01))
+				if (!is_v4_lma_mode)
 				{
 #if 1
-			dbg("searching for the prefix for a new BCE entry...\n");
+					dbg("searching for the prefix for a new BCE entry for pmip v6 mode...\n");
 			r_tmp = lma_mnid_hnp_map(bce->mn_hw_address, &result);
 			if (result >= 0) {
 				if (IN6_ARE_ADDR_EQUAL(&r_tmp, &info->mn_prefix)) {
@@ -474,8 +504,9 @@ int lma_update_binding_entry(pmip_entry_t * bce, msg_info_t * info)
 			}
 #endif
 				}
-			if (conf.pmip_mode_type== IP_FAMILY_V4_V01)
+			if (is_v4_lma_mode == 1)
 				{
+				dbg("pmip v4 mode checking mag\n");
 				if (IN6_ARE_ADDR_EQUAL(&zero_v6, &bce->mn_serv_mag_addr))
 				{
 					dbg("First new serving MAG:  %x:%x:%x:%x:%x:%x:%x:%x  \n", NIP6ADDR(&info->src));
@@ -498,7 +529,7 @@ int lma_update_binding_entry(pmip_entry_t * bce, msg_info_t * info)
 				//Delete  Route
 				snprintf (command,200,"ip route del %s dev %s ",inet_ntoa(bce->mnv4_addr), fname);
 				system (command);
-				dbg("sj: Route table com=%s=",command);
+				dbg("Route table com=%s=\n",command);
 			}
 							//decrement users of old tunnel.
 							pmip_tunnel_del(bce->tunnel);
@@ -511,14 +542,33 @@ int lma_update_binding_entry(pmip_entry_t * bce, msg_info_t * info)
 						}
 				}
 			}
-			bce->timestamp.first    = info->timestamp.first;
+			memcpy(bce->timestamp.first,info->timestamp.first, sizeof(info->timestamp.first));
 			bce->timestamp.second   = info->timestamp.second;
+			if (!is_v4_lma_mode)
+			{
 			if(!IN6_IS_ADDR_UNSPECIFIED(&info->mn_prefix))
 				bce->mn_prefix          = info->mn_prefix;
 			bce->mn_addr            = info->mn_addr;
+					dbg("MN v6 address: %x:%x:%x:%x:%x:%x:%x:%x, \n", NIP6ADDR(&bce->mn_addr));
+			}
+			else if (is_v4_lma_mode == 1)
+			{
+				dbg("MN v4 address: %s, \n", inet_ntoa(bce->mnv4_addr));
+			}
+
+			if (conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
+			{
+				dbg("Pmip Tunnel mode is v6 store ipv6 address of MAG\n");
 			bce->mn_link_local_addr = info->mn_link_local_addr;
 			bce->mn_serv_mag_addr   = info->src;
+			}
+			else if (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
+			{
+				dbg("Pmip Tunnel mode is v4 store ipv4 address of MAG\n");
 			bce->mn_serv_mag_v4_addr = info->srcv4;
+			}
+			else
+				dbg("Pmip Tunnel mode is invalid\n");
 			bce->lifetime.tv_sec    = info->lifetime.tv_sec;
 			bce->lifetime.tv_nsec   = 0;
 			bce->n_rets_counter     = conf.MaxMessageRetransmissions;

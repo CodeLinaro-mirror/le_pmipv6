@@ -55,6 +55,7 @@
 #define IN6ADDRSZ       16
 #define INADDRSZ        4
 
+#define MAC_ADDR_LEN  6
 
 #define option_len(opt) ((int)(((unsigned char *)(opt))[1]))
 #define option_ptr(opt) ((void *)&(((unsigned char *)(opt))[2]))
@@ -97,9 +98,9 @@ struct arp_hdr_info {
 	uint8_t hlen;
 	uint8_t plen;
 	uint16_t opcode;
-	uint8_t sender_mac[ETHER_ADDR_LEN];
+	uint8_t sender_mac[MAC_ADDR_LEN];
 	uint8_t sender_ip[4];
-	uint8_t target_mac[ETHER_ADDR_LEN];
+	uint8_t target_mac[MAC_ADDR_LEN];
 	uint8_t target_ip[4];
 };
 
@@ -108,7 +109,7 @@ struct pktinfo {
 	packet_type_t packet_type;
 	struct sockaddr_in ipsrc;
 	struct sockaddr_in ipdst;
-	unsigned char 	ether_shost [ETHER_ADDR_LEN];
+	unsigned char 	ether_shost [MAC_ADDR_LEN];
 	struct dhcp_packet dhcpinfo;
 	struct arp_hdr_info arp_info;
 };

@@ -196,6 +196,7 @@ static void *icmp6_listen(void *arg)
 	struct in6_pktinfo pkt_info;
 	struct icmp6_hdr *ih;
 	int iif, hoplimit;
+	unsigned char source_mac_addr [PMIP_MAC_ADDR_LEN];
 	ssize_t len;
 	struct icmp6_handler *h;
 
@@ -204,13 +205,18 @@ static void *icmp6_listen(void *arg)
 	while (1) {
 		pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
 		len = icmp6_recv(icmp6_sock.fd, msg, sizeof(msg),
-				 &addr, &pkt_info, &hoplimit);
+				 &addr, &pkt_info, &hoplimit, &source_mac_addr);
 		/* check if socket has closed */
 		if (len == -EBADF)
 			break;
 		/* common validity check */
 		if (len < sizeof(struct icmp6_hdr))
 			continue;
+		if (len < 0)
+		{
+			dbg("Invalid length %d . ignore icmpv6 packet\n");
+			continue;
+		}
 		saddr = &addr.sin6_addr;
 		daddr = &pkt_info.ipi6_addr;
 		iif = pkt_info.ipi6_ifindex;
@@ -220,7 +226,7 @@ static void *icmp6_listen(void *arg)
 		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
 		pthread_rwlock_rdlock(&handler_lock);
 		if ((h = icmp6_handler_get(ih->icmp6_type)) != NULL)
-			h->recv(ih, len, saddr, daddr, iif, hoplimit);
+			h->recv(ih, len, saddr, daddr, iif, hoplimit, source_mac_addr);
 		pthread_rwlock_unlock(&handler_lock);
 	}
 	pthread_exit(NULL);
@@ -389,16 +395,26 @@ int icmp6_send(int oif, uint8_t hoplimit,
 }
 
 #define CMSG_BUF_LEN 128
+#define QCMAP_MSGR_MAC_ADDR_LEN_V01 6
 
 ssize_t icmp6_recv(int sockfd, unsigned char *msg, size_t msglen,
 		   struct sockaddr_in6 *addr, struct in6_pktinfo *pkt_info,
-		   int *hoplimit)
+		   int *hoplimit, unsigned char source_mac_addr [PMIP_MAC_ADDR_LEN])
 {
 	struct msghdr mhdr;
 	struct cmsghdr *cmsg;
 	struct iovec iov;
 	static unsigned char chdr[CMSG_BUF_LEN];
 	ssize_t len;
+	struct nd_opt_hdr *opt_hdr;
+	int payload_len;
+	int packet_size;
+	struct icmp6_hdr *ih;
+	struct ether_addr *mac_addr;
+	int is_rs = 0 ;
+	int is_rs_mac_successfully_parsed = 0;
+
+	memset(source_mac_addr,0,sizeof(source_mac_addr));
 
 	iov.iov_len = msglen;
 	iov.iov_base = (unsigned char *) msg;
@@ -425,6 +441,42 @@ ssize_t icmp6_recv(int sockfd, unsigned char *msg, size_t msglen,
 			memcpy(pkt_info, CMSG_DATA(cmsg), sizeof(*pkt_info));
 			break;
 		}
+	}
+
+	//dbg("sj:sj: checking router solicitation len =%d\n",len);
+
+	ih = (struct icmp6_hdr *) msg;
+	//dbg("sj:sj: tye =%d, host order=%d\n",ih->icmp6_type,ntohs(ih->icmp6_type));
+	if (ih->icmp6_type == ND_ROUTER_SOLICIT)
+	{
+		dbg("sjj: Router solicitation received\n");
+		is_rs = 1;
+		opt_hdr = (struct nd_opt_hdr *) (msg + sizeof(struct nd_router_solicit));
+		payload_len = len;
+		packet_size = sizeof(struct nd_router_solicit);
+		while(opt_hdr != NULL && opt_hdr->nd_opt_len != 0 && payload_len > 0)
+		{
+			packet_size += (opt_hdr->nd_opt_len * 8);
+			//dbg("sjj: in while loop, rs h len=%d,, type %d\n",sizeof(struct nd_router_solicit),opt_hdr->nd_opt_type);
+
+			if (opt_hdr->nd_opt_type == ND_OPT_SOURCE_LINKADDR)
+			{
+				mac_addr = (struct ether_addr*) (msg  + (packet_size - QCMAP_MSGR_MAC_ADDR_LEN_V01));
+				//stroing mac
+				memcpy(source_mac_addr,mac_addr,PMIP_MAC_ADDR_LEN);
+				dbg("Router solicitation sender MAC %s\n", ether_ntoa(mac_addr));
+				is_rs_mac_successfully_parsed = 1;
+				break;
+			}
+
+			opt_hdr = (struct nd_opt_hdr *) (opt_hdr + opt_hdr->nd_opt_len);
+			payload_len -= opt_hdr->nd_opt_len;
+		}
+	}
+	if (is_rs && (is_rs_mac_successfully_parsed != 1))
+	{
+		dbg("sj: Router solicitation Do Not have Sender MAc option.Ignore RS\n");
+		return -1;
 	}
 	return len;
 }
@@ -580,9 +632,8 @@ int pmipv6_start_dnsmasq_with_dhcpv6_option()
 			dbg("error: pmip_add_dnsmasq_v6dns_option failed\n");
 			return -1;
 		}
-		system("killall -9 dnsmasq");
-		dbg("command=%s=\n",dhcp_command);
-		system(dhcp_command);
+		pmip_system_call("killall -9 dnsmasq",strlen("killall -9 dnsmasq"),1);
+		pmip_system_call(dhcp_command,strlen(dhcp_command),1);
 		return 1;
 	}
 	dbg("Error Reading dnsmasq command from ps failed\n");
@@ -741,7 +792,7 @@ int dhcpv6_info_recv(int sockfd, unsigned char *buf, size_t msglen,
 	{
 		dbg("sj:ip ipv6 packet\n");
 		//stroing mac
-		memcpy(ether_shost,eh->ether_shost,ETHER_ADDR_LEN);
+		memcpy(ether_shost,eh->ether_shost,PMIP_MAC_ADDR_LEN);
 		iph6 = (struct ip6hdr *) (buf + sizeof(struct ether_header));
 		udph = (struct udphdr *) (buf + sizeof(struct ipv6hdr) + sizeof(struct ether_header));
 		if (ntohs(udph->dest) == DHCP_SERVER_PORT_V6)
@@ -763,7 +814,7 @@ int dhcpv6_info_recv(int sockfd, unsigned char *buf, size_t msglen,
 static void *dhcpv6_info_listen(void *arg)
 {
 	uint8_t msg[MAX_PKT_LEN];
-	unsigned char ether_shost [ETHER_ADDR_LEN];
+	unsigned char ether_shost [PMIP_MAC_ADDR_LEN];
 
 	int iif;
 	ssize_t len;

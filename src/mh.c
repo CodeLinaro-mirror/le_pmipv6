@@ -317,7 +317,7 @@ int mhv4_init(void)
 		syslog(LOG_ERR,
 				"Unable to open MH socket! "
 				"Do you have root permissions?");
-		dbg("sj: mhv4 init failed\n");
+		dbg("mhv4 init failed\n");
 		return mhv4_sock.fd;
 	}
 
@@ -585,10 +585,8 @@ static int mh_try_pad(const struct iovec *in, struct iovec *out, int count)
 		out[n].iov_base = in[m].iov_base;
 		n++;
 	}
-	if (count == 1) {
-		pad = optpad(8, 0, len);
-		create_opt_pad(&out[n++], pad);
-	}
+	pad = optpad(8, 0, len);
+	create_opt_pad(&out[n++], pad);
 
 	return n;
 }

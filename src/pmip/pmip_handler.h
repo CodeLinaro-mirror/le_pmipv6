@@ -91,10 +91,26 @@ protected_pmip_handler(struct in6_addr  *solicited_mcast(struct in6_addr *id);)
  * \param[in]  tqe A task queue element
  */
 private_pmip_handler(  void             pmip_timer_retrans_pbu_handler(struct tq_elem *tqe);)
+
+/*! \fn  void             pmip_timer_retrans_pbu_handlerv4(struct tq_elem *tqe)
+ * \brief  Handler triggered by add_task_abs for entry expiry and deletion, retransmit PBU
+ * \param[in]  tqe A task queue element
+ */
+private_pmip_handler(  void             pmip_timer_retrans_pbu_handlerv4(struct tq_elem *tqe);)
+
+
 /*! \fn void             pmip_timer_bce_expired_handler(struct tq_elem *tqe)
  * \brief  Handler triggered by add_task_abs for entry expiry and deletion, expire PMIP binding cache entry and NS on MAG
  * \param[in]  tqe A task queue element
  */
 protected_pmip_handler(void             pmip_timer_bce_expired_handler(struct tq_elem *tqe);)
+
+/*! \fn void             pmip_timer_bce_expired_handlerv4(struct tq_elem *tqe)
+ * \brief  Handler triggered by add_task_abs for entry expiry and deletion, expire PMIP binding cache entry and NS on MAG
+ * \param[in]  tqe A task queue element
+ */
+protected_pmip_handler(void             pmip_timer_bce_expired_handlerv4(struct tq_elem *tqe);)
+
+
 #endif
 /** @}*/

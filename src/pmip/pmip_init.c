@@ -109,7 +109,7 @@ static int pmip_cache_delete_each(void *data, void *arg)
 void pmip_cleanup(void)
 	//---------------------------------------------------------------------------------------------------------------------
 {
-	if (conf.pmip_mode_type == IP_FAMILY_V6_V01)
+	if ((conf.pmip_mode_type == IP_FAMILY_V6_V01) || (conf.pmip_mode_type == IP_FAMILY_V4V6_V01))
 	{
 		//Release the pmip cache ==> deletes the routes and rules and "default route on PMIP" and tunnels created.
 		dbg("Release all occupied resources...\n");
@@ -121,7 +121,7 @@ void pmip_cleanup(void)
 		pmip_cache_iterate(pmip_cache_delete_each, NULL);
 	}
 
-	if (conf.pmip_mode_type == IP_FAMILY_V4_V01)
+	if ((conf.pmip_mode_type == IP_FAMILY_V4_V01) || (conf.pmip_mode_type == IP_FAMILY_V4V6_V01))
 	{
 		//Release the pmip cache ==> deletes the routes and rules and "default route on PMIP" and tunnels created.
 		dbg("Release all occupied v4 resources...\n");
@@ -178,7 +178,7 @@ int pmip_common_init(void)
 	}
 	close(probe_fd);
 
-if (is_lma() || conf.pmip_mode_type == IP_FAMILY_V6_V01) {
+if ((conf.pmip_mode_type == IP_FAMILY_V6_V01 || conf.pmip_mode_type == IP_FAMILY_V4V6_V01)) {
 		/**
 		 * Initializes PMIP cache.
 		 **/
@@ -189,7 +189,7 @@ if (is_lma() || conf.pmip_mode_type == IP_FAMILY_V6_V01) {
 			dbg("PMIP Binding Cache is initialized!\n");
 		}
 }
-if(!is_lma() && conf.pmip_mode_type == IP_FAMILY_V4_V01){
+if((conf.pmip_mode_type == IP_FAMILY_V4_V01 || conf.pmip_mode_type == IP_FAMILY_V4V6_V01)){
 		/**
 		 * Initializes PMIPv4 cache.
 		 **/
@@ -225,6 +225,10 @@ int pmip_mag_init(void)
 		dbg("Initialization of FSM failed...exit\n");
 		exit(-1);
 	}
+	if (pending_pbu_seq_list_init() < 0) {
+		dbg("PBU seg list init failed...exit\n");
+		exit(-1);
+	}
 
 	init_pbu_sequence_number();
 	if ((conf.pmip_mode_type == IP_FAMILY_V6_V01) ||(conf.pmip_mode_type == IP_FAMILY_V4V6_V01))
@@ -245,16 +249,18 @@ int pmip_mag_init(void)
 	}
 
 	if ((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01) ||
-			((conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)))
+			((conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)) ||
+			((conf.pmip_mode_type == IP_FAMILY_V4V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)))
 	{
-		dbg("Initializing the PBA handler\n");
+		dbg("Initializing the PBA handler for v6 tunnel\n");
 		//To capture PBA message.
 		mh_handler_reg(IP6_MH_TYPE_BACK, &pmip_mag_pba_handler);
 	}
 	if  ((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01) ||
-			(conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01))
+			(conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)||
+			((conf.pmip_mode_type == IP_FAMILY_V4V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)))
 	{
-		dbg("Initializing the PBA handler for v4 ip\n");
+		dbg("Initializing the PBA handler for v4 tunnel\n");
 		//To capture PBA message.
 		mhv4_handler_reg(IP6_MH_TYPE_BACK, &pmipv4_mag_pba_handler);
 	}
@@ -285,17 +291,19 @@ int pmip_lma_init(void)
 	pmip_lma_mn_to_hnp_cache_init();
 	conf.OurAddress = conf.LmaAddress;
 	dbg("Entity Address: %x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(&conf.OurAddress));
-	if ((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01) ||
-			((conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)))
+
+	//if v6 tunnel
+	if (conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
 	{
-		dbg("Initializing the PBU handler\n");
+		dbg("Initializing the PBU handler over v6 tunnel\n");
 		//To capture PBU message.
 		mh_handler_reg(IP6_MH_TYPE_BU, &pmip_lma_pbu_handler);
 	}
-	if  ((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01) ||
-			(conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01))
+
+	//if v4 tunnel
+	if  (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
 	{
-		dbg("Initializing the PBU handler for ipv4\n");
+		dbg("Initializing the PBU handler over v4 tunnel\n");
 		//To capture PBU message.
 		mhv4_handler_reg(IP6_MH_TYPE_BU, &pmipv4_lma_pbu_handler);
 	}

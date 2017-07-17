@@ -30,7 +30,6 @@
 #    include "vt.h"
 #endif
 #include "debug.h"
-#include "conf.h"
 
 extern struct mip6_config conf;
 extern int getipforclient(struct in_addr *addr);
@@ -180,6 +179,11 @@ static int mh_try_pad(const struct iovec *in, struct iovec *out, int count)
 				pad = optpad(8, 2, len);    /* 8n+2 */
 				break;
 
+			case IP6_MHOPT_GRE_KEY:
+				pad = optpad(4, 0, len);	/* 4n */
+				break;
+
+
 
 		}
 		if (pad > 0) {
@@ -191,10 +195,9 @@ static int mh_try_pad(const struct iovec *in, struct iovec *out, int count)
 		out[n].iov_base = in[m].iov_base;
 		n++;
 	}
-	if (count == 1) {
+	dbg("making lenght multiple of octate\n");
 		pad = optpad(8, 0, len);
 		create_opt_pad(&out[n++], pad);
-	}
 	return n;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -220,10 +223,16 @@ int get_new_pbu_sequence_number(void)
 	return seq;
 }
 //---------------------------------------------------------------------------------------------------------------------
-int is_pba_is_response_to_last_pbu_sent(msg_info_t * pba_info, pmip_entry_t *bce)
+int is_pba_is_response_to_valid_pbu_seq_number(msg_info_t * pba_info, pmip_entry_t *bce)
 {
-	if ( pba_info->seqno == bce->seqno_out) {
-		if ((pba_info->timestamp.first == bce->timestamp.first) && (pba_info->timestamp.second == bce->timestamp.second)) {
+	struct pending_pbu_seq_list *tmp = NULL;
+	int ret = 0 ;
+	if ( get_pbu_seq_node(pba_info->seqno) != NULL) {
+		//delete the node from list
+		ret = pending_pbu_seq_list_del(pba_info->seqno);
+		if (ret < 0)
+			dbg("Node with sequence %d failed\n",pba_info->seqno);
+		if ((memcmp(pba_info->timestamp.first,bce->timestamp.first,sizeof(bce->timestamp.first)) == 0) && (pba_info->timestamp.second == bce->timestamp.second)) {
 			if (IN6_IS_ADDR_UNSPECIFIED(&bce->mn_prefix) || IN6_ARE_ADDR_EQUAL(&pba_info->mn_prefix, &bce->mn_prefix)) {
 				if (IN6_ARE_ADDR_EQUAL(&pba_info->mn_iid, &bce->mn_suffix)) {
 					dbg("Correct PBA received\n");
@@ -238,7 +247,7 @@ int is_pba_is_response_to_last_pbu_sent(msg_info_t * pba_info, pmip_entry_t *bce
 			dbg("Not identical Timestamp option: PBU:%08X%08X  PBA:%08X%08X\n", bce->timestamp.first, bce->timestamp.second, pba_info->timestamp.first, pba_info->timestamp.second);
 		}
 	} else {
-		dbg("Not identical Sequence Number: PBU:%d  PBA:%d\n", bce->seqno_out, pba_info->seqno);
+		dbg("Sequence Number: PBU:%d does not exits in list\n",pba_info->seqno);
 	}
 	return 0;
 }
@@ -1279,8 +1288,9 @@ int mh_pbu_parse(msg_info_t * info, struct ip6_mh_binding_update *pbu, ssize_t l
 
 	int                                              return_code;
 	bzero(&mh_opts, sizeof(mh_opts));
-	if((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01) ||
-			((conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)))
+
+	//if v6 tunnel
+	if(conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
 	{
 		struct in6_addr_bundle *in_addrs = (struct in6_addr_bundle *)addrs;
 		info->src = *in_addrs->src;
@@ -1291,8 +1301,8 @@ int mh_pbu_parse(msg_info_t * info, struct ip6_mh_binding_update *pbu, ssize_t l
 		dbg("Serving MAG Address: %x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(&info->src));
 		dbg("Our Address        : %x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(&info->dst));
 	}
-	if ((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01) ||
-			(conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01))
+	//if v4 tunnel
+	else if (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
 	{
 		struct in_addr_bundle *in_addrs = (struct in_addr_bundle *)addrs;
 		info->srcv4 = *in_addrs->src;
@@ -1302,6 +1312,10 @@ int mh_pbu_parse(msg_info_t * info, struct ip6_mh_binding_update *pbu, ssize_t l
 		info->addrsv4.dst = &info->dstv4;
 		dbg("Serving MAG Address: %s\n", inet_ntoa(info->srcv4));
 		dbg("Our Address        : %s\n", inet_ntoa(info->dstv4));
+	}
+	else
+	{
+		dbg("Invalid Tunnel mode %d\n", conf.pmip_tunnel_mode);
 	}
 
 	if (len < sizeof(struct ip6_mh_binding_update)) {
@@ -1347,12 +1361,12 @@ int mh_pbu_parse(msg_info_t * info, struct ip6_mh_binding_update *pbu, ssize_t l
 	time_stamp_opt = mh_opt(&pbu->ip6mhbu_hdr, &mh_opts, IP6_MHOPT_TIME_STAMP);
 	if (time_stamp_opt) {
 		//copy
-		info->timestamp.first = time_stamp_opt->time_stamp.first;
+		memcpy(info->timestamp.first,time_stamp_opt->time_stamp.first,sizeof(time_stamp_opt->time_stamp.first));
 		info->timestamp.second = time_stamp_opt->time_stamp.second;
-		unsigned long long int seconds = info->timestamp.first << 16;
-		seconds = seconds | ((info->timestamp.second & 0xFFFF0000) >> 16);
-		unsigned int useconds = (info->timestamp.second & 0x0000FFFF) * 1000000 / 65536;
-		dbg("Timestamp option: %ld sec %d usec\n", seconds, useconds);
+		uint32_t seconds ;
+		memcpy(&seconds,info->timestamp.first+2,sizeof(seconds));
+		unsigned int useconds = ((info->timestamp.second) * 1000000 / 65536);
+		dbg("Timestamp option: %d sec %d usec\n", ntohl(seconds), ntohl(useconds));
 	}
 
 	handoff_indicator_opt = mh_opt(&pbu->ip6mhbu_hdr, &mh_opts, IP6_MHOPT_HANDOFF_INDICATOR);
@@ -1444,12 +1458,12 @@ int mh_pba_parse(msg_info_t * info, struct ip6_mh_binding_ack *pba, ssize_t len,
 	time_stamp_opt = mh_opt(&pba->ip6mhba_hdr, &mh_opts, IP6_MHOPT_TIME_STAMP);
 	if (time_stamp_opt) {
 		//copy
-		info->timestamp.first = time_stamp_opt->time_stamp.first;
+		memcpy(info->timestamp.first,time_stamp_opt->time_stamp.first,sizeof(time_stamp_opt->time_stamp.first));
 		info->timestamp.second = time_stamp_opt->time_stamp.second;
-		unsigned long long int seconds = info->timestamp.first << 16;
-		seconds = seconds | ((info->timestamp.second & 0xFFFF0000) >> 16);
-		unsigned int useconds = (info->timestamp.second & 0x0000FFFF) * 1000000 / 65536;
-		dbg("Timestamp option: %ld sec %d usec\n", seconds, useconds);
+		uint32_t seconds ;
+		memcpy(&seconds,info->timestamp.first+2,sizeof(seconds));
+		unsigned int useconds = (info->timestamp.second) * 1000000 / 65536;
+		dbg("Timestamp option: %ld sec %d usec\n", ntohl(seconds), ntohl(useconds));
 	}
 
 	handoff_indicator_opt = mh_opt(&pba->ip6mhba_hdr, &mh_opts, IP6_MHOPT_HANDOFF_INDICATOR);
@@ -1598,9 +1612,12 @@ int pmipv4_mh_send(const struct in_addr_bundle *addrs, const struct iovec *mh_ve
 	daddr.sin_port = htons(IPPROTO_MH);
 
 	memset(&pinfo, 0, sizeof(pinfo));
-	//pinfo.ipi_addr = *((struct in_addr *)(addrs->src));
-	inet_aton("10.252.134.239",&pinfo.ipi_addr);
+	pinfo.ipi_addr = *(addrs->src);
+	//inet_aton("10.252.134.239",&pinfo.ipi_addr);
 	pinfo.ipi_ifindex = oif;
+
+	dbg("sj:j packet info frommm %s \n",inet_ntoa(pinfo.ipi_addr));
+	dbg("sj: index v4 tun= %d with 0 prefix\n",oif);
 
 	cmsglen = CMSG_SPACE(sizeof(pinfo));
 	cmsg = malloc(cmsglen);
@@ -1700,7 +1717,7 @@ int pmip_mh_send(const struct in6_addr_bundle *addrs, const struct iovec *mh_vec
 	return ret;
 }
 //---------------------------------------------------------------------------------------------------------------------
-int mh_send_pbu(void *addrs, pmip_entry_t * bce, struct timespec *lifetime, int oif)
+int mh_send_pbu(void *addrs, pmip_entry_t * bce, struct timespec *lifetime, int oif, int is_v4_pmip_mode)
 {
 	/*  FROM RFC 5213
 	 *
@@ -1771,6 +1788,8 @@ int mh_send_pbu(void *addrs, pmip_entry_t * bce, struct timespec *lifetime, int 
 	ip6mnid_mac_t                 mn_hardware_address;
 	uint16_t                      p_flag = 1;
 	int                           iov_count;
+	uint32_t                      time_sec = 0;
+	int ret = 0;
 
 	memset((void*)mh_vec       , 0, (2 * (IP6_MHOPT_MAX + 1))*sizeof(struct iovec));
 	memset((void*)dummy_mh_vec , 0, (2 * (IP6_MHOPT_MAX + 1))*sizeof(struct iovec));
@@ -1781,6 +1800,15 @@ int mh_send_pbu(void *addrs, pmip_entry_t * bce, struct timespec *lifetime, int 
 		return -ENOMEM;
 	}
 	bce->seqno_out        = get_new_pbu_sequence_number();
+	ret = pending_pbu_seq_list_add(bce->seqno_out);
+	if (ret < 0)
+	{
+		dbg("pbu sequence number addition to list failed\n");
+	}
+	else
+	{
+		dbg("pbu sequence number addition to list successed\n");
+	}
 	pbu->ip6mhbu_seqno    = htons(bce->seqno_out);
 	pbu->ip6mhbu_flags    = bce->PBU_flags; // no htons since endianess already taken in account in ip6mh.h
 	pbu->ip6mhbu_lifetime = htons(lifetime->tv_sec >> 2);
@@ -1791,7 +1819,7 @@ int mh_send_pbu(void *addrs, pmip_entry_t * bce, struct timespec *lifetime, int 
 	dbg("Create PBU options...\n");
 	dbg("pmip mode %d\n",conf.pmipv4_work_mode_type);
 	mh_create_opt_mobile_node_identifier(&mh_vec[iovlen++], p_flag, &mn_hardware_address);
-	if (conf.pmip_mode_type == IP_FAMILY_V4_V01) {
+	if (is_v4_pmip_mode == 1) {
 		dbg("mh_send_pbu is_pmipv4 true\n");
 		dbg("adding home addr option\n");
 		mh_create_opt_v4_home_addr_request_option(&mh_vec[iovlen++], bce->dhcp_requested_ip);
@@ -1800,7 +1828,7 @@ int mh_send_pbu(void *addrs, pmip_entry_t * bce, struct timespec *lifetime, int 
 			mh_create_opt_v4_dmnp_option(&mh_vec[iovlen++], &conf.PMIPV4SecRouterDMNPPrefix, &conf.PMIPV4SecRouterdmnpPrefixLen);
 		}
 	}
-	if (conf.pmip_mode_type == IP_FAMILY_V6_V01)
+	if (!is_v4_pmip_mode)
 	{
 		mh_create_opt_home_net_prefix(&mh_vec[iovlen++], &bce->mn_prefix);
 	}
@@ -1809,16 +1837,15 @@ int mh_send_pbu(void *addrs, pmip_entry_t * bce, struct timespec *lifetime, int 
 	mh_create_opt_mobile_node_link_layer_identifier(&mh_vec[iovlen++], &mn_iid);
 	mh_create_opt_gre(&mh_vec[iovlen++], 0, 0);
 
-	tz.tz_minuteswest = 0;          /* minutes west of Greenwich */
-	tz.tz_dsttime     = 3; //DST_WET;    /* type of DST correction */
-	if (gettimeofday(&tv, &tz) == 0) {
-		bce->timestamp.first  = tv.tv_sec >> 16;
-		bce->timestamp.second = (tv.tv_sec & 0x0000FFFF) << 16;
-		bce->timestamp.second += (((tv.tv_usec * 65536)/1000000) & 0x0000FFFF);
+	memset(&bce->timestamp,0 ,sizeof(bce->timestamp));
+	if (gettimeofday(&tv, NULL) == 0) {
+		dbg("Timestamp option success to get time, Add option\n");
+		time_sec = htonl(tv.tv_sec) ;
+		memcpy((bce->timestamp.first + 2),&time_sec,sizeof(time_sec));
+		bce->timestamp.second =  htonl(((tv.tv_usec * 65536)/1000000));
 		mh_create_opt_time_stamp(&mh_vec[iovlen++], &bce->timestamp);
 	} else {
-		bce->timestamp.first  = 0;
-		bce->timestamp.second = 0;
+		memset(&bce->timestamp,0 ,sizeof(bce->timestamp));
 		dbg("Timestamp option failed to get time, discard option\n");
 	}
 
@@ -1830,12 +1857,12 @@ int mh_send_pbu(void *addrs, pmip_entry_t * bce, struct timespec *lifetime, int 
 	dbg("Send PBU with life time...%d\n",pbu->ip6mhbu_lifetime );
 
 	dbg("Send PBU....\n");
-	if((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01) ||
-			((conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)))
+	if((!is_v4_pmip_mode && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01) ||
+			((is_v4_pmip_mode == 1 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)))
 		pmip_mh_send((struct in6_addr_bundle *)addrs, dummy_mh_vec, iov_count, oif);
 
-	if  ((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01) ||
-			(conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01))
+	if  ((!is_v4_pmip_mode && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01) ||
+			(is_v4_pmip_mode == 1 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01))
 		pmipv4_mh_send((struct in_addr_bundle *)addrs, dummy_mh_vec, iov_count, oif);
 
 	dbg("Copy PBU message into TEMP PMIP entry iovec....\n");
@@ -1846,7 +1873,7 @@ int mh_send_pbu(void *addrs, pmip_entry_t * bce, struct timespec *lifetime, int 
 	return 0;
 }
 //---------------------------------------------------------------------------------------------------------------------
-int mh_send_pba(void *addrs, pmip_entry_t * bce, struct timespec *lifetime, int oif)
+int mh_send_pba(void *addrs, pmip_entry_t * bce, struct timespec *lifetime, int oif, int is_v4_lma_mode)
 {
 	static struct iovec           mh_vec[2 * (IP6_MHOPT_MAX + 1)];
 	static struct iovec           dummy_mh_vec[2 * (IP6_MHOPT_MAX + 1)];
@@ -1886,8 +1913,12 @@ int mh_send_pba(void *addrs, pmip_entry_t * bce, struct timespec *lifetime, int 
 		dbg("Create PBA adding home net prefix As PBU has the home v4 prefix request....\n");
 		mh_create_opt_v4_home_adrr_reply(&mh_vec[iovlen++], &bce->v4_home_prefix, &bce->v4_home_prefixlen);
 	}
-	mh_create_opt_v4_default_router_opt(&mh_vec[iovlen++]);
+	//commenting for this May be need in future
+	//mh_create_opt_v4_default_router_opt(&mh_vec[iovlen++]);
+	if (!is_v4_lma_mode)
+	{
 	mh_create_opt_home_net_prefix(&mh_vec[iovlen++], &bce->mn_prefix);
+	}
 	mh_create_opt_mobile_node_link_layer_identifier(&mh_vec[iovlen++], &mn_iid);
 	mh_create_opt_time_stamp(&mh_vec[iovlen++], &bce->timestamp);
 	mh_create_opt_gre(&mh_vec[iovlen++], GRE_KEY_VALID, DEFAULT_GRE_KEY);
@@ -1899,13 +1930,99 @@ int mh_send_pba(void *addrs, pmip_entry_t * bce, struct timespec *lifetime, int 
 	//calculate the length of the message.
 	pba->ip6mhba_hdr.ip6mh_hdrlen = mh_length(dummy_mh_vec, iov_count);
 	dbg("Send PBA...\n");
-	if((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01) ||
-			((conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)))
+	//if v6 tunnel
+	if(conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
 		pmip_mh_send((struct in6_addr_bundle *)addrs, dummy_mh_vec, iov_count, oif);
-	if  ((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01) ||
-			(conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01))
+	//if v4 tunnel
+	if  (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
 		pmipv4_mh_send((struct in_addr_bundle *)addrs, dummy_mh_vec, iov_count, oif);
 
 	free_iov_data(dummy_mh_vec, iov_count);
 	return 0;
 }
+
+int pending_pbu_seq_list_del(uint16_t pbu_seq_no)
+{
+	struct pending_pbu_seq_list *seq_list = NULL;
+	//find node
+	seq_list = get_pbu_seq_node(pbu_seq_no);
+	if (seq_list == NULL)
+	{
+		dbg("Unable to delete the node .Seq %d does not exits in list\n",pbu_seq_no);
+		return -1;
+	}
+	else
+	{
+		dbg("Freeing the pbu sequence number:%d \n",pbu_seq_no);
+		list_del(&seq_list->list);
+		free(seq_list);
+	}
+	return 0;
+}
+
+int pending_pbu_seq_list_add(uint16_t pbu_seq_no)
+{
+	struct pending_pbu_seq_list *tmp = NULL;
+	//find if node already exits
+	tmp = get_pbu_seq_node(pbu_seq_no);
+	if (tmp != NULL)
+	{
+		dbg("Duplicate pbu sequence number:%d . will not be added \n",pbu_seq_no);
+		return -1;
+	}
+	tmp = NULL;
+	tmp= (struct pending_pbu_seq_list *)malloc(sizeof(struct pending_pbu_seq_list));
+	if (tmp == NULL)
+	{
+		dbg("error: Malloc failed\n");
+		return -1;
+	}
+	tmp->pbu_seq_no = pbu_seq_no;
+	INIT_LIST_HEAD(&tmp->list);
+	list_add(&(tmp->list), &(conf.pbu_list));
+
+	//list_del(&pbu_list->list);
+	dbg("Added sequence number %d to list\n",pbu_seq_no);
+	return 0;
+	//list_add_tail(&pbu_list->list, &iface->expired_coas);
+}
+
+struct pending_pbu_seq_list *get_pbu_seq_node(uint16_t pbu_seq_no)
+{
+	struct list_head *node = NULL;
+	struct pending_pbu_seq_list *seq_list = NULL;
+	list_for_each(node, &conf.pbu_list)
+	{
+		//access the list node through node
+		seq_list = list_entry(node, struct pending_pbu_seq_list, list);
+		if (pbu_seq_no == seq_list->pbu_seq_no)
+		{
+			dbg("Match found for pbu seq %d\n",pbu_seq_no);
+			return seq_list;
+		}
+
+	}
+	return NULL;
+}
+
+void *delete_pending_pbu_seq_list()
+{
+	struct list_head *node = NULL;
+	struct pending_pbu_seq_list *seq_list = NULL;
+	list_for_each(node, &conf.pbu_list)
+	{
+		//access the list node through node
+		seq_list = list_entry(node, struct pending_pbu_seq_list, list);
+		if (seq_list != NULL)
+		{
+			list_del(&seq_list->list);
+			free(seq_list);
+		}
+		else
+		{
+			dbg("Got NULL pbu sequence list pointer\n");
+		}
+
+	}
+}
+

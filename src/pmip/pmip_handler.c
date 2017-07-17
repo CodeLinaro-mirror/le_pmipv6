@@ -69,16 +69,12 @@ struct in6_addr *solicited_mcast(struct in6_addr *id)
 void pmip_timer_retrans_pbu_handler(struct tq_elem *tqe)
 {
 	int mutex_return_code;
+	int ret = -1;
 
 	dbg("pmip_timer_retrans_pbu_handler : %x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(&conf.OurAddress));
-	if (conf.pmip_mode_type == IP_FAMILY_V6_V01) {
 		dbg("pmip_timer_retrans_pbu_handler v6 lock\n");
 		mutex_return_code = pthread_rwlock_wrlock(&pmip_lock);
-	}
-	if (conf.pmip_mode_type == IP_FAMILY_V4_V01) {
-		dbg("pmip_timer_retrans_pbu_handler v4 lock\n");
-		mutex_return_code = pthread_rwlock_wrlock(&pmip_v4_lock);
-	}
+
 	if (mutex_return_code != 0) {
 		dbg("pthread_rwlock_wrlock(&pmip_lock) %s\n", strerror(mutex_return_code));
 	}
@@ -98,41 +94,44 @@ void pmip_timer_retrans_pbu_handler(struct tq_elem *tqe)
 			if (mutex_return_code != 0) {
 				dbg("pthread_rwlock_unlock(&e->lock) %s\n", strerror(mutex_return_code));
 			}
-			if (conf.pmip_mode_type == IP_FAMILY_V6_V01) {
-				dbg ("pmipv6 pmip_bce_delete\n");
-				pmip_bce_delete(e);
-			}
-			if (conf.pmip_mode_type == IP_FAMILY_V4_V01) {
-				dbg ("pmipv4 pmipv4_bce_delete\n");
-				pmipv4_bce_delete(e);
-			}
+			dbg ("pmipv6 pmip_bce_delete\n");
+			pmip_bce_delete(e);
 		} else {
 			//Decrement the N trasnmissions counter.
 			e->n_rets_counter--;
 			struct in6_addr_bundle addrs;
 			struct in_addr_bundle addrs1;
-			if ((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01) ||
-					((conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)))
-			{
-				addrs.src = &conf.OurAddress;
-				addrs.dst = &conf.LmaAddress;
-				pmip_mh_send(&addrs, e->mh_vec, e->iovlen, e->link);
-
-			}
-			if  ((conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01) ||
-					(conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01))
-			{
-				//store v4 address in v6 format will parse back v4 while sending packet
-				addrs1.src = &conf.Magv4AddressEgress;
-				addrs1.dst = &conf.LmaV4Address;
-				pmipv4_mh_send(&addrs1, e->mh_vec, e->iovlen, e->link);
-			}
+			memset(&addrs, 0, sizeof(addrs));
+			memset(&addrs1, 0, sizeof(addrs1));
 			//sends a PBU
 			dbg("Send PBU again....\n");
 
 			// INCREMENT SEQ NUMBER OF PBU
 			e->seqno_out        = get_new_pbu_sequence_number();
+			ret = pending_pbu_seq_list_add(e->seqno_out);
+			if (ret < 0)
+			{
+				dbg("pbu sequence number addition to list failed\n");
+			}
+			else
+			{
+				dbg("pbu sequence number addition to list successed\n");
+			}
 			((struct ip6_mh_binding_update *)(e->mh_vec[0].iov_base))->ip6mhbu_seqno = htons(e->seqno_out);
+			if (conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
+			{
+				addrs.src = &conf.OurAddress;
+				addrs.dst = &conf.LmaAddress;
+				pmip_mh_send(&addrs, e->mh_vec, e->iovlen, 0);
+
+			}
+			if  (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
+			{
+				//store v4 address in v6 format will parse back v4 while sending packet
+				addrs1.src = &conf.Magv4AddressEgress;
+				addrs1.dst = &conf.LmaV4Address;
+				pmipv4_mh_send(&addrs1, e->mh_vec, e->iovlen, 0);
+			}
 
 			//add a new task for PBU retransmission.
 			struct timespec expires;
@@ -143,20 +142,107 @@ void pmip_timer_retrans_pbu_handler(struct tq_elem *tqe)
 			mutex_return_code = pthread_rwlock_unlock(&e->lock);
 			if (mutex_return_code != 0) {
 				dbg("pthread_rwlock_unlock(&e->lock) %s\n", strerror(mutex_return_code));
-			}
+	}
 		}
 	}
-	if (conf.pmip_mode_type == IP_FAMILY_V6_V01) {
-		dbg("pmip_timer_retrans_pbu_handler v6 unlock\n");
-		mutex_return_code = pthread_rwlock_unlock(&pmip_lock);
-	}
-	if (conf.pmip_mode_type == IP_FAMILY_V4_V01) {
-		dbg("pmip_timer_retrans_pbu_handler v4 unlock\n");
-		mutex_return_code = pthread_rwlock_unlock(&pmip_v4_lock);
-	}
+	dbg("pmip_timer_retrans_pbu_handler v6 unlock\n");
+	mutex_return_code = pthread_rwlock_unlock(&pmip_lock);
 	if (mutex_return_code != 0) {
 		dbg("pthread_rwlock_unlock(&pmip_lock) %s\n", strerror(mutex_return_code));
 	}
+}
+
+//---------------------------------------------------------------------------------------------------------------------
+void pmip_timer_retrans_pbu_handlerv4(struct tq_elem *tqe)
+{
+	int mutex_return_code;
+	int ret = 0;
+
+	dbg("pmip_timer_retrans_pbu_handlerv4 : %x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(&conf.OurAddress));
+
+		dbg("pmip_timer_retrans_pbu_handler v4 lock\n");
+		mutex_return_code = pthread_rwlock_wrlock(&pmip_v4_lock);
+
+	if (mutex_return_code != 0) {
+		dbg("pthread_rwlock_wrlock(&pmip_lock) %s\n", strerror(mutex_return_code));
+	}
+	printf("-------------------------------------\n");
+	if (!task_interrupted()) {
+		pmip_entry_t *e = tq_data(tqe, pmip_entry_t, tqe);
+		mutex_return_code = pthread_rwlock_wrlock(&e->lock);
+		if (mutex_return_code != 0) {
+			dbg("pthread_rwlock_wrlock(&e->lock) %s\n", strerror(mutex_return_code));
+		}
+		dbg("Retransmissions counter : %d\n", e->n_rets_counter);
+		if (e->n_rets_counter == 0) {
+			free_iov_data((struct iovec *) &e->mh_vec, e->iovlen);
+			dbg("No PBA received from LMA....\n");
+			dbg("Abort Trasmitting the PBU....\n");
+			mutex_return_code = pthread_rwlock_unlock(&e->lock);
+			if (mutex_return_code != 0) {
+				dbg("pthread_rwlock_unlock(&e->lock) %s\n", strerror(mutex_return_code));
+			}
+				dbg ("pmipv4 pmipv4_bce_delete\n");
+				pmipv4_bce_delete(e);
+
+		} else {
+			//Decrement the N trasnmissions counter.
+			e->n_rets_counter--;
+			struct in6_addr_bundle addrs;
+			struct in_addr_bundle addrs1;
+			memset(&addrs, 0, sizeof(addrs));
+			memset(&addrs1, 0, sizeof(addrs1));
+
+			//sends a PBU
+			dbg("Send PBU again....\n");
+
+			// INCREMENT SEQ NUMBER OF PBU
+			e->seqno_out        = get_new_pbu_sequence_number();
+			ret = pending_pbu_seq_list_add(e->seqno_out);
+			if (ret < 0)
+			{
+				dbg("pbu sequence number addition to list failed\n");
+			}
+			else
+			{
+				dbg("pbu sequence number addition to list successed\n");
+			}
+			((struct ip6_mh_binding_update *)(e->mh_vec[0].iov_base))->ip6mhbu_seqno = htons(e->seqno_out);
+			if (conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
+			{
+				addrs.src = &conf.OurAddress;
+				addrs.dst = &conf.LmaAddress;
+				pmip_mh_send(&addrs, e->mh_vec, e->iovlen, 0);
+
+			}
+			if  (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
+			{
+				//store v4 address in v6 format will parse back v4 while sending packet
+				addrs1.src = &conf.Magv4AddressEgress;
+				addrs1.dst = &conf.LmaV4Address;
+				pmipv4_mh_send(&addrs1, e->mh_vec, e->iovlen, 0);
+			}
+
+			//add a new task for PBU retransmission.
+			struct timespec expires;
+			clock_gettime(CLOCK_REALTIME, &e->add_time);
+			tsadd(e->add_time, conf.RetransmissionTimeOut, expires);
+			add_task_abs(&expires, &e->tqe, pmip_timer_retrans_pbu_handlerv4);
+			dbg("PBU Retransmissions timer is triggered again....\n");
+			mutex_return_code = pthread_rwlock_unlock(&e->lock);
+			if (mutex_return_code != 0) {
+				dbg("pthread_rwlock_unlock(&e->lock) %s\n", strerror(mutex_return_code));
+			}
+		}
+	}
+
+
+		dbg("pmip_timer_retrans_pbu_handler v4 unlock\n");
+		mutex_return_code = pthread_rwlock_unlock(&pmip_v4_lock);
+	if (mutex_return_code != 0) {
+		dbg("pthread_rwlock_unlock(&pmip_lock) %s\n", strerror(mutex_return_code));
+	}
+
 }
 
 int send_arp_from_bridge(struct in_addr arp_ip)
@@ -215,7 +301,7 @@ int send_arp_from_bridge(struct in_addr arp_ip)
 	pkt.ether.ether_type = htons(ETHERTYPE_ARP);
 	pkt.arp.ar_hrd = htons(ARPHRD_ETHER);
 	pkt.arp.ar_pro = htons(ETHERTYPE_IP);
-	pkt.arp.ar_hln = ETHER_ADDR_LEN;
+	pkt.arp.ar_hln = PMIP_MAC_ADDR_LEN;
 	pkt.arp.ar_pln = sizeof(pkt.sender_ip);
 	pkt.arp.ar_op = htons(ARPOP_REQUEST);
 
@@ -244,23 +330,20 @@ int send_arp_from_bridge(struct in_addr arp_ip)
 }
 
 //---------------------------------------------------------------------------------------------------------------------
-void pmip_timer_bce_expired_handler(struct tq_elem *tqe)
+void pmip_timer_bce_expired_handlerv4(struct tq_elem *tqe)
+
 {
-	dbg("pmip_timer_bce_expired_handler Enter\n");
+	dbg("pmip_timer_bce_expired_handlerv4 Enter\n");
 	int mutex_return_code;
 	int ret;
-    if (is_lma() || conf.pmip_mode_type == IP_FAMILY_V6_V01) {
-		dbg("pmip_timer_bce_expired_handler v6 lock\n");
-		mutex_return_code = pthread_rwlock_wrlock(&pmip_lock);
-	}
-	if (!is_lma() && conf.pmip_mode_type == IP_FAMILY_V4_V01) {
-		dbg("pmip_timer_bce_expired_handler v4 lock\n");
+
+		dbg("pmip_timer_bce_expired_handlerv4 v4 lock\n");
 		mutex_return_code = pthread_rwlock_wrlock(&pmip_v4_lock);
-	}
+
 	if (mutex_return_code != 0) {
 		dbg("pthread_rwlock_wrlock(&pmip_lock) %s\n", strerror(mutex_return_code));
 	}
-	printf("-------------------------------------\n");
+	dbg("-------------------------------------\n");
 	if (!task_interrupted()) {
 		pmip_entry_t *e = tq_data(tqe, pmip_entry_t, tqe);
 		mutex_return_code = pthread_rwlock_wrlock(&e->lock);
@@ -274,44 +357,27 @@ void pmip_timer_bce_expired_handler(struct tq_elem *tqe)
 			if (is_mag()) {
 				//++e->seqno_out;
 				dbg("Calling deregistration\n");
-				mag_dereg(e, 1);
-				if (conf.pmip_mode_type == IP_FAMILY_V6_V01) {
-					pmipcache_release_entry(e);
-					pmip_bce_delete(e);
-				}
-				if (conf.pmip_mode_type == IP_FAMILY_V4_V01) {
+				mag_dereg(e, 1, 1);
 					pmipv4cache_release_entry(e);
 					pmipv4_bce_delete(e);
-				}
+
 				return;
 			}
 			//Delete existing route for the deleted MN
 			if (is_lma()) {
-				lma_dereg(e, 0, 0);
-				pmipcache_release_entry(e);
-				pmip_bce_delete(e);
+				lma_dereg(e, 0, 0, 1);
+				pmipv4cache_release_entry(e);
+				pmipv4_bce_delete(e);
 				return;
 			}
-			if (is_lma()  || conf.pmip_mode_type == IP_FAMILY_V6_V01) {
-				mutex_return_code = pthread_rwlock_unlock(&pmip_lock);
-			}
-			if (!is_lma() && conf.pmip_mode_type == IP_FAMILY_V4_V01) {
 				mutex_return_code = pthread_rwlock_unlock(&pmip_v4_lock);
-			}
+
 			if (mutex_return_code != 0) {
 				dbg("pthread_rwlock_unlock(&pmip_lock) %s\n", strerror(mutex_return_code));
 			}
 			return;
 		}
 		if (is_mag()) {
-			if (conf.pmip_mode_type == IP_FAMILY_V6_V01)
-			{
-				dbg("Send NS for Neighbour Reachability for:%x:%x:%x:%x:%x:%x:%x:%x iif=%d\n", NIP6ADDR(&e->mn_hw_address), e->link);
-				//Create NS for Reachability test!
-				ndisc_send_ns(e->link, &conf.MagAddressIngress, solicited_mcast(&e->mn_suffix), get_mn_addr(e));
-			}
-			else
-			{
 				dbg("Send ARP for Neighbour Reachability for:%x:%x:%x:%x:%x:%x:%x:%x ipv4 address %s\n", NIP6ADDR(&e->mn_hw_address), inet_ntoa(e->mnv4_addr));
 				//Create ARP for Reachability test!
 				ret = send_arp_from_bridge(e->mnv4_addr);
@@ -325,7 +391,85 @@ void pmip_timer_bce_expired_handler(struct tq_elem *tqe)
 					e->Is_arp_sent =1 ;
 				}
 
+			struct timespec expires;
+			clock_gettime(CLOCK_REALTIME, &e->add_time);
+			tsadd(e->add_time, conf.RetransmissionTimeOut, expires);
+			// Add a new task for deletion of entry if No Na is received.
+			add_task_abs(&expires, &e->tqe, pmip_timer_bce_expired_handlerv4);
+			dbg("Start the Timer for Retransmission/Deletion ....\n");
+			//Decrements the Retransmissions counter.
+			e->n_rets_counter--;
+			mutex_return_code = pthread_rwlock_unlock(&e->lock);
+			if (mutex_return_code != 0) {
+				dbg("pthread_rwlock_unlock(&e->lock) %s\n", strerror(mutex_return_code));
 			}
+		}
+		if (is_lma()) {
+			lma_dereg(e, 0, 0, 1);
+			pmipv4cache_release_entry(e);
+			pmipv4_bce_delete(e);
+			return;
+		}
+			}
+
+		dbg("pmip_timer_bce_expired_handlerv4 v4 unlock\n");
+		mutex_return_code = pthread_rwlock_unlock(&pmip_v4_lock);
+
+	if (mutex_return_code != 0) {
+		dbg("pthread_rwlock_unlock(&pmip_lock) %s\n", strerror(mutex_return_code));
+	}
+}
+
+
+//---------------------------------------------------------------------------------------------------------------------
+void pmip_timer_bce_expired_handler(struct tq_elem *tqe)
+{
+	dbg("pmip_timer_bce_expired_handler Enter\n");
+	int mutex_return_code;
+	int ret;
+	dbg("pmip_timer_bce_expired_handler v6 lock\n");
+	mutex_return_code = pthread_rwlock_wrlock(&pmip_lock);
+
+	if (mutex_return_code != 0) {
+		dbg("pthread_rwlock_wrlock(&pmip_lock) %s\n", strerror(mutex_return_code));
+	}
+	dbg("-------------------------------------\n");
+	if (!task_interrupted()) {
+		pmip_entry_t *e = tq_data(tqe, pmip_entry_t, tqe);
+		mutex_return_code = pthread_rwlock_wrlock(&e->lock);
+		if (mutex_return_code != 0) {
+			dbg("pthread_rwlock_wrlock(&e->lock) %s\n", strerror(mutex_return_code));
+		}
+		dbg("Retransmissions counter : %d\n", e->n_rets_counter);
+		if (e->n_rets_counter == 0) {
+			dbg("Retransmissions counter expired\n");
+			free_iov_data((struct iovec *) &e->mh_vec, e->iovlen);
+			if (is_mag()) {
+				//++e->seqno_out;
+				dbg("Calling deregistration\n");
+				mag_dereg(e, 1, 0);
+				pmipcache_release_entry(e);
+				pmip_bce_delete(e);
+				return;
+			}
+			//Delete existing route for the deleted MN
+			if (is_lma()) {
+				lma_dereg(e, 0, 0, 0);
+				pmipcache_release_entry(e);
+				pmip_bce_delete(e);
+				return;
+			}
+			mutex_return_code = pthread_rwlock_unlock(&pmip_lock);
+
+			if (mutex_return_code != 0) {
+				dbg("pthread_rwlock_unlock(&pmip_lock) %s\n", strerror(mutex_return_code));
+			}
+			return;
+		}
+		if (is_mag()) {
+			dbg("Send NS for Neighbour Reachability for:%x:%x:%x:%x:%x:%x:%x:%x iif=%d\n", NIP6ADDR(&e->mn_hw_address), e->link);
+			//Create NS for Reachability test!
+			ndisc_send_ns(e->link, &conf.MagAddressIngress, solicited_mcast(&e->mn_suffix), get_mn_addr(e));
 
 			struct timespec expires;
 			clock_gettime(CLOCK_REALTIME, &e->add_time);
@@ -341,20 +485,14 @@ void pmip_timer_bce_expired_handler(struct tq_elem *tqe)
 			}
 		}
 		if (is_lma()) {
-			lma_dereg(e, 0, 0);
+			lma_dereg(e, 0, 0, 0);
 			pmipcache_release_entry(e);
 			pmip_bce_delete(e);
 			return;
 		}
 	}
-	if (is_lma() || conf.pmip_mode_type == IP_FAMILY_V6_V01) {
 		dbg("pmip_timer_bce_expired_handler v6 unlock\n");
 		mutex_return_code = pthread_rwlock_unlock(&pmip_lock);
-	}
-	if (!is_lma() && conf.pmip_mode_type == IP_FAMILY_V4_V01) {
-		dbg("pmip_timer_bce_expired_handler v4 unlock\n");
-		mutex_return_code = pthread_rwlock_unlock(&pmip_v4_lock);
-	}
 	if (mutex_return_code != 0) {
 		dbg("pthread_rwlock_unlock(&pmip_lock) %s\n", strerror(mutex_return_code));
 	}
@@ -403,7 +541,17 @@ static inline int ipv6_addr_is_linklocal(const struct in6_addr *addr)
  * handler called when receiving a router solicitation
  */
 //hip
-static void pmip_mag_recv_rs(const struct icmp6_hdr *ih, ssize_t len, const struct in6_addr *saddr, const struct in6_addr *daddr, int iif, int hoplimit)
+
+static void pmip_mag_recv_rs
+(
+	const struct icmp6_hdr *ih,
+	ssize_t len,
+	const struct in6_addr *saddr,
+	const struct in6_addr *daddr,
+	int iif,
+	int hoplimit,
+	unsigned char source_mac_addr [PMIP_MAC_ADDR_LEN]
+)
 {
 	dbg("\n");
 	dbg("Router Solicitation received \n");
@@ -414,11 +562,12 @@ static void pmip_mag_recv_rs(const struct icmp6_hdr *ih, ssize_t len, const stru
 	msg_info_t rs_info;
 	bzero(&rs_info, sizeof(rs_info));
 	icmp_rs_parse(&rs_info, (struct nd_router_solicit *) ih, saddr, daddr, iif, hoplimit);
+	mac_to_ipv6(source_mac_addr,&rs_info.mn_hw_address);
 	mag_fsm(&rs_info);
 }
 
 /*!
- * handler called when receiving a proxy binding acknowledgment
+ * handler called when receiving a proxy binding acknowledgment over v6 tunnel
  */
 static void pmip_mag_recv_pba(const struct ip6_mh *mh, ssize_t len, const struct in6_addr_bundle *in_addrs, int iif)
 {
@@ -431,17 +580,31 @@ static void pmip_mag_recv_pba(const struct ip6_mh *mh, ssize_t len, const struct
 	struct ip6_mh_binding_ack *pba;
 	//call the fsm function.
 	msg_info_t info;
+	bzero(&info, sizeof(info));
 	pba = (struct ip6_mh_binding_ack *) ((void *) mh);
 	mh_pba_parse(&info, pba, len, in_addrs, iif);
-	if (conf.pmip_mode_type ==  IP_FAMILY_V6_V01)
-		mag_fsm(&info);
+
+	if (info.pmipv4_hnp_reply_valid == 1)
+	{
 	//calling for ipv4 handling
-	if (conf.pmip_mode_type ==  IP_FAMILY_V4_V01)
+	if (conf.pmip_mode_type ==  IP_FAMILY_V4_V01 || conf.pmip_mode_type ==  IP_FAMILY_V4V6_V01)
+		{
+			dbg("Received PBA with ipv4 HNP reply\n");
     mag_fsm_v4(&info);
+		}
+	}
+	else
+	{
+		if (conf.pmip_mode_type ==  IP_FAMILY_V6_V01 || conf.pmip_mode_type ==  IP_FAMILY_V4V6_V01)
+		{
+			dbg("Received PBA with ipv6 Home Network prefix\n");
+			mag_fsm(&info);
+		}
+	}
 }
 
 /*!
- * handler called when receiving a proxy binding acknowledgment
+ * handler called when receiving a proxy binding acknowledgment over v4 tunnel
  */
 static void pmipv4_mag_recv_pba(const struct ip6_mh *mh, ssize_t len, const struct in_addr_bundle *in_addrs, int iif)
 {
@@ -454,19 +617,33 @@ static void pmipv4_mag_recv_pba(const struct ip6_mh *mh, ssize_t len, const stru
 	struct ip6_mh_binding_ack *pba;
 	//call the fsm function.
 	msg_info_t info;
+	bzero(&info, sizeof(info));
 	pba = (struct ip6_mh_binding_ack *) ((void *) mh);
 	mh_pba_parse(&info, pba, len, in_addrs, iif);
-	if (conf.pmip_mode_type ==  IP_FAMILY_V6_V01)
-		mag_fsm(&info);
+	if (info.pmipv4_hnp_reply_valid == 1)
+	{
 	//calling for ipv4 handling
-	if (conf.pmip_mode_type ==  IP_FAMILY_V4_V01)
+	if (conf.pmip_mode_type ==  IP_FAMILY_V4_V01 || conf.pmip_mode_type ==  IP_FAMILY_V4V6_V01)
+		{
+			dbg("Received PBA with ipv4 HNP reply\n");
     mag_fsm_v4(&info);
+		}
+	}
+	else
+	{
+		if (conf.pmip_mode_type ==  IP_FAMILY_V6_V01 || conf.pmip_mode_type ==  IP_FAMILY_V4V6_V01)
+		{
+			dbg("Received PBA with ipv6 Home Network prefix\n");
+			mag_fsm(&info);
+		}
+	}
+
 }
 
 
 
 /*!
- * handler called when receiving a proxy binding update
+ * handler called when receiving a proxy binding update over v6 tunnel
  */
 static void pmip_lma_recv_pbu(const struct ip6_mh *mh, ssize_t len, const struct in6_addr_bundle *in_addrs, int iif)
 {
@@ -481,11 +658,18 @@ static void pmip_lma_recv_pbu(const struct ip6_mh *mh, ssize_t len, const struct
 	msg_info_t info;
 	bzero(&info, sizeof(info));
 	mh_pbu_parse(&info, pbu, len, in_addrs, iif);
+	if (info.pmipv4_hnp_req_valid == 1)
+	{
+		lma_fsm_v4(&info);
+	}
+	else
+	{
 	lma_fsm(&info);
+	}
 }
 
 /*!
- * handler called when receiving a proxy binding update
+ * handler called when receiving a proxy binding update over v4 tunnel
  */
 static void pmipv4_lma_recv_pbu(const struct ip6_mh *mh, ssize_t len, const struct in_addr_bundle *in_addrs, int iif)
 {
@@ -500,14 +684,30 @@ static void pmipv4_lma_recv_pbu(const struct ip6_mh *mh, ssize_t len, const stru
 	msg_info_t info;
 	bzero(&info, sizeof(info));
 	mh_pbu_parse(&info, pbu, len, in_addrs, iif);
+	if (info.pmipv4_hnp_req_valid == 1)
+	{
+		lma_fsm_v4(&info);
+	}
+	else
+	{
 	lma_fsm(&info);
+	}
 }
 
 
 /*!
  * handler called when MAG receive a neighbor advertisement
  */
-static void pmip_mag_recv_na(const struct icmp6_hdr *ih, ssize_t len, const struct in6_addr *saddr, const struct in6_addr *daddr, int iif, int hoplimit)
+static void pmip_mag_recv_na
+(
+	const struct icmp6_hdr *ih,
+	ssize_t len,
+	const struct in6_addr *saddr,
+	const struct in6_addr *daddr,
+	int iif,
+	int hoplimit,
+	unsigned char source_mac_addr [PMIP_MAC_ADDR_LEN]
+)
 {
 	// define the MN identifier
 	//struct in6_addr id = in6addr_any;

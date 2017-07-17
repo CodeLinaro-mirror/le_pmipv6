@@ -141,6 +141,7 @@ typedef struct pmip_entry_t {
 	struct in6_addr			mn_serv_mag_addr;	/*!< \brief Serving MAG Address */
 	struct in_addr			mn_serv_mag_v4_addr;	/*!< \brief Serving MAG Address */
 	struct in6_addr			mn_serv_lma_addr;	/*!< \brief Serving LMA Address */
+	struct in_addr			mn_serv_lma_v4_addr;/*!< \brief Serving LMA v4 Address */
 	struct in6_addr			mn_link_local_addr;	/*!< \brief Link Local Address  for MN */
 	struct timespec			add_time;			/*!< \brief When was the binding added or modified */
 	struct timespec			lifetime;			/*!< \brief Lifetime sent in the Binding Update, in seconds */

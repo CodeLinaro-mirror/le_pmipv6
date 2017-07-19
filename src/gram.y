@@ -229,7 +229,10 @@ static void uerror(const char *fmt, ...) {
 %token      PCAPSYSLOGASSOCIATIONGREPSTRING
 %token      PCAPSYSLOGDEASSOCIATIONGREPSTRING
 %token <addrv4>	LMAV4ADDRESS
-%token <addrv4>	PRIMARYDNS
+%token <addrv4>	PRIMARYV4DNS
+%token <addrv4>	SECONDARYV4DNS
+%token		PRIMARYV6DNS
+%token		SECONDARYV6DNS
 %token <addrv4>	MAGV4ADDRESSINGRESS
 %token <addrv4>	MAGV4ADDRESSEGRESS
 %token <addrv4>	 PMIPV4SECROUTERDMNPPREFIX
@@ -899,9 +902,21 @@ proxymipmagopt	: LMAADDRESS ADDR ';'
 		{
 			conf.LmaV4Address = $2;
 		}
-		| PRIMARYDNS ADDRV4 ';'
+		| PRIMARYV4DNS ADDRV4 ';'
 		{
-			conf.PrimaryDns = $2;
+			conf.PrimaryV4Dns = $2;
+		}
+		| SECONDARYV4DNS ADDRV4 ';'
+		{
+			conf.SecondaryV4Dns = $2;
+		}
+		| PRIMARYV6DNS ADDR ';'
+		{
+			conf.PrimaryV6Dns = $2;
+		}
+		| SECONDARYV6DNS ADDR ';'
+		{
+			conf.SecondaryV6Dns = $2;
 		}
 		| MAGV4ADDRESSINGRESS ADDRV4 ';'
 		{

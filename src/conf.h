@@ -100,7 +100,10 @@ struct mip6_config {
 	struct in6_addr AllLmaMulticastAddress;     // All-LMA Multicast Address (Eurecom' Extension for SPMIPv6).
 	struct in6_addr LmaAddress;                 // address of LMA, PMIP network side.
 	struct in_addr LmaV4Address;                 // address of LMA, PMIP network side.
-	struct in_addr PrimaryDns;                   // primary dns server.
+	struct in_addr PrimaryV4Dns;                   // primary v4 dns server.
+	struct in_addr SecondaryV4Dns;                   // Secondary v4 dns server
+	struct in6_addr PrimaryV6Dns;                 // primary v6 dns server
+	struct in6_addr SecondaryV6Dns;                 // Secondary v6 dns server
 	struct in_addr PMIPV4SecRouterDMNPPrefix;
 	int PMIPV4SecRouterdmnpPrefixLen;
 	char*           LmaPmipNetworkDevice;       // PMIP LMA device, PMIP network side.

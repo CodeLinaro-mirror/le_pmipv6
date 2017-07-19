@@ -61,6 +61,8 @@
 #include "util.h"
 #include "debug.h"
 #include "conf.h"
+#include "pmip_cache.h"
+
 
 enum {
     ICMP6_DU = 0,
@@ -77,16 +79,18 @@ enum {
 };
 
 
-struct sock {
-	pthread_mutex_t send_mutex;
-	int fd;
-};
-
 static pthread_rwlock_t handler_lock;
 static struct icmp6_handler *handlers[__ICMP6_SENTINEL + 1];
 
 struct sock icmp6_sock;
 static pthread_t icmp6_listener;
+
+static pthread_rwlock_t handler_lock_dhcpv6_info;
+
+#ifdef FORWARD_DHCPV6_TO_TUNNEL
+struct sock dhcpv6_info_sock;
+static pthread_t dhcpv6_info_sock_listener;
+#endif
 
 static inline int icmp6_type_map(uint8_t type)
 {
@@ -500,3 +504,324 @@ void icmp6_cleanup(void)
 	pthread_cancel(icmp6_listener);
 	pthread_join(icmp6_listener, NULL);
 }
+int pmip_add_dnsmasq_v6dns_option(char * dhcp_command)
+{
+	char command[200] = {0};
+	char buff[200] = {0};
+	char base[200] = {0};
+	char pridnsaddr[INET6_ADDRSTRLEN] = {0};
+	char secdnsaddr[INET6_ADDRSTRLEN] = {0};
+	char *dnsv6_option = "option6:dns-server";
+	int haspridns = 0;
+	int hassecdns = 0;
+	dbg(":Enter\n");
+	//check if dhcp dns option is alreday there
+	if((strstr(dhcp_command, dnsv6_option)) != NULL)
+	{
+		dbg ("error: dhcpv6 dns option already there\n");
+		return -1;
+	}
+	inet_ntop(AF_INET6, &conf.PrimaryV6Dns, pridnsaddr, INET6_ADDRSTRLEN);
+
+	snprintf(base, 200," --dhcp-range=%s,%s " , "::","::");
+	if (strncmp (pridnsaddr, "::", sizeof("::")))
+	{
+		haspridns = 1;
+		snprintf(command, 200,"%s --dhcp-option=option6:dns-server,[%s]",base,pridnsaddr);
+		dbg ("Added primary dns option\n");
+	}
+	inet_ntop(AF_INET6, &conf.SecondaryV6Dns, secdnsaddr, INET6_ADDRSTRLEN);
+	if (strncmp (secdnsaddr, "::", sizeof("::")))
+	{
+		hassecdns = 1;
+		if (haspridns)
+		{
+			dbg ("Added secondary dns option\n");
+			snprintf(buff, 200,",[%s] ",secdnsaddr);
+			strcat(command,buff);
+		}
+		else
+		{
+			dbg ("Adding only secondary dns option\n");
+			snprintf(command, 200,"%s --dhcp-option=option6:dns-server,[%s] ",base,secdnsaddr);
+		}
+
+	}
+	if (!pridnsaddr && !hassecdns)
+	{
+		dbg("Error: Both dns is zero. dnsmasq will not provide the v6 dns\n");
+		return -1;
+	}
+
+	strcat(dhcp_command, command);
+	return 1;
+}
+int pmipv6_start_dnsmasq_with_dhcpv6_option()
+{
+	FILE* fp;
+	const char* check_cmd = "ps -o args | grep dnsmasq | grep -v grep";
+	char dhcp_command[MAX_DHCP_COMMAND_STR_LEN] = {0};
+
+	//Read current dnsmasq options
+	if((fp = popen(check_cmd, "r")) == NULL)
+	{
+		dbg("Error checking dnsmasq \n", errno, 0, 0);
+		pclose(fp);
+		return -1;
+	}
+
+	if(fgets(dhcp_command, sizeof(dhcp_command), fp))
+	{
+		dbg("Reading dnsmasq command from ps succesed=%s=\n",dhcp_command);
+		pclose(fp);
+		dhcp_command[strlen(dhcp_command) - 1] = '\0';
+		if (pmip_add_dnsmasq_v6dns_option(dhcp_command) < 0)
+		{
+			dbg("error: pmip_add_dnsmasq_v6dns_option failed\n");
+			return -1;
+		}
+		system("killall -9 dnsmasq");
+		dbg("command=%s=\n",dhcp_command);
+		system(dhcp_command);
+		return 1;
+	}
+	dbg("Error Reading dnsmasq command from ps failed\n");
+	pclose(fp);
+	return -1;
+}
+
+//comment code to forward dhcpv6 packet to tunnel may be needed in future
+#ifdef FORWARD_DHCPV6_TO_TUNNEL
+static void pmip_mag_dhcpv6_info_hand(unsigned char *buf, size_t msglen,
+		unsigned char *ether_shost)
+{
+	int ret;
+	char command[100];
+	dbg("sj: in pmip_mag_dhcpv6_info_hand\n");
+	pmip_entry_t *bce;
+	struct in6_addr hw_address;
+	char fname[IFNAMSIZ]={0};
+	int type;
+
+	msg_info_t info;
+	bzero(&info, sizeof(info));
+
+	mac_to_ipv6(ether_shost,&hw_address);
+	if ((conf.pmip_mode_type== IP_FAMILY_V6_V01 || conf.pmip_mode_type== IP_FAMILY_V4V6_V01))
+	{
+		type = pmip_cache_exists(&conf.OurAddress, &hw_address);
+		if (type == BCE_NO_ENTRY)
+		{
+			dbg("sj:ipv6 entry not created return\n");
+			return;
+		}
+		bce = pmip_cache_get(&conf.OurAddress, &hw_address);
+		pmipcache_release_entry(bce);
+		if (bce == NULL)
+		{
+			dbg("sj:ipv6 bce entry not found return\n");
+			return;
+		}
+		if (conf.pmip_tunnel_mode== IP_FAMILY_V4_V01)
+		{
+			ret = tunnelv4_getname(bce->tunnel_v4,fname);
+			if (ret == 0)
+			{
+				dbg("sj:ipv6 Get Tunnel name failed for v4 tunnel do not forward packet\n");
+				return;
+			}
+			else
+			{
+				dbg("sj:ipv6 got tunnel name = %s\n",fname);
+				//forward packet to tunnel interface from ip header
+				forward_msg_to_tunnel((buf + sizeof(struct ether_header)),(msglen-sizeof(struct ether_header)),fname);
+			}
+		}
+		else if (conf.pmip_tunnel_mode== IP_FAMILY_V6_V01)
+		{
+			ret = tunnel_getname(bce->tunnel,fname);
+			if (ret == 0)
+			{
+				dbg("sj:ipv6 Get Tunnel name failed for v6 tunnel do not forward packet\n");
+				return;
+			}
+			else
+			{
+				dbg("sj:ipv6 got tunnel name = %s\n",fname);
+				//forward packet to tunnel interface from ip header
+				forward_msg_to_tunnel((buf + sizeof(struct ether_header)),(msglen-sizeof(struct ether_header)),fname);
+			}
+		}
+	}
+	else
+	{
+	}
+}
+
+int create_sender_sock(int *sock, char *fname)
+{
+	struct sockaddr_ll daddr;
+	*sock = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
+	if (*sock < 0)
+	{
+		dbg("ipv6 Socket cteation failed\n");
+		return -1;;
+	}
+	//get tunnel name
+
+	memset(&daddr, 0, sizeof(struct sockaddr_ll));
+	daddr.sll_family = AF_PACKET;
+	daddr.sll_protocol = htons(ETHERTYPE_IPV6);;
+	daddr.sll_ifindex = if_nametoindex(fname);
+	if (bind(*sock, (struct sockaddr*) &daddr, sizeof(daddr)) < 0) {
+		dbg("sj:ipv6 bind failed\n");
+		close(*sock);
+	}
+
+	if (setsockopt(*sock, SOL_SOCKET, SO_BINDTODEVICE, fname, (socklen_t)strlen(fname)) < 0)
+	{
+		dbg("sj:ipv6  %s: Unable to bind socket to interface %s errnum=%d,msg=%s\n", __func__, fname,errno,strerror(errno));
+		return -1;
+	}
+	dbg("sj:ipv6 create sucess\n");
+}
+
+int forward_msg_to_tunnel(unsigned char *buf,ssize_t len, char *fname)
+{
+	struct msghdr mhdr;
+	struct cmsghdr *cmsg;
+	struct iovec iov;
+	static unsigned char chdr[CMSG_BUF_LEN];
+	struct sockaddr_in6 sdaddr;
+	struct ipv6hdr *iph6;
+	int send_sock;
+	create_sender_sock(&send_sock, fname);
+	int bytes_sent;
+	dbg("sj:ipv6 Got len=%d\n",len);
+	bytes_sent=write(send_sock,buf,len);
+	dbg("sj:ipv6 Sent %d bytes\n",bytes_sent);
+	if (bytes_sent < 0) {
+		dbg("sj:ipv6 write failed errnum=%d,msg=%s\n",errno,strerror(errno));
+	}
+	else
+	{
+		dbg("sj:ipv6 write ok to iface=%s except eth header=====\n",fname);
+	}
+	close(send_sock);
+
+}
+
+int dhcpv6_info_recv(int sockfd, unsigned char *buf, size_t msglen,
+		unsigned char *ether_shost)
+{
+	/* Header structures */
+	struct ether_header *eh;
+	struct ipv6hdr *iph6;
+	struct udphdr *udph;
+	struct arp_hdr_info *arphdr;
+	ssize_t numbytes;
+	struct sockaddr_in ipsrc,ipdst;
+	struct sockaddr_in dhcp_server_ip;
+	int i= 0 ,ret;
+	unsigned int lease_time = 6000;
+	char command [200];
+	struct dhcp_packet *dhcpinfo1;
+
+	ssize_t len;
+
+	//dbg ("sj: received on dhcpv6_info filter before receive from from\n");
+	len = recvfrom(sockfd, buf, msglen, 0, NULL, NULL);
+	eh = (struct ether_header *) buf;
+
+	//dbg("sj: after recv from\n");
+	eh = (struct ether_header *) buf;
+	//cheching packet type
+	if ((conf.pmip_mode_type == IP_FAMILY_V6_V01 || conf.pmip_mode_type == IP_FAMILY_V4V6_V01)
+			&& ntohs (eh->ether_type) == ETHERTYPE_IPV6)
+	{
+		dbg("sj:ip ipv6 packet\n");
+		//stroing mac
+		memcpy(ether_shost,eh->ether_shost,ETHER_ADDR_LEN);
+		iph6 = (struct ip6hdr *) (buf + sizeof(struct ether_header));
+		udph = (struct udphdr *) (buf + sizeof(struct ipv6hdr) + sizeof(struct ether_header));
+		if (ntohs(udph->dest) == DHCP_SERVER_PORT_V6)
+		{
+			dbg ("sj:ipv6 Got multicast for port %d will send to tunnel\n", ntohs(udph->dest));
+			return len;
+		}
+		else
+		{
+			//	dbg ("sj:ipv6 Invalid UDP packet received Not DHCPv6 packet\n");
+			return -1;
+		}
+	}
+
+	return -1;
+}
+
+
+static void *dhcpv6_info_listen(void *arg)
+{
+	uint8_t msg[MAX_PKT_LEN];
+	unsigned char ether_shost [ETHER_ADDR_LEN];
+
+	int iif;
+	ssize_t len;
+	int ret;
+
+	dbg("sj: dhcpv6_info_listen thread started\n");
+
+	while (1) {
+		pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+		len = dhcpv6_info_recv(dhcpv6_info_sock.fd, msg, sizeof(msg),ether_shost);
+		if (len == -1)
+		{
+			//dbg ("Invalid packet received\n");
+			continue;
+		}
+
+		/* multiplex to right handler */
+		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
+		pthread_rwlock_rdlock(&handler_lock_dhcpv6_info);
+		pmip_mag_dhcpv6_info_hand(msg , len ,ether_shost);
+		pthread_rwlock_unlock(&handler_lock_dhcpv6_info);
+	}
+	pthread_exit(NULL);
+}
+
+int dhcpv6_info_init(void)
+{
+	pthread_mutexattr_t mattrs;
+	int val=1;
+	int sockopt;
+
+	dhcpv6_info_sock.fd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
+	if (dhcpv6_info_sock.fd < 0) {
+		syslog(LOG_ERR,
+				"Unable to open Multicast socket! "
+				"Do you have root permissions?");
+		return dhcpv6_info_sock.fd;
+
+	}
+	/* Bind to bridge0 */
+	if (setsockopt(dhcpv6_info_sock.fd, SOL_SOCKET, SO_BINDTODEVICE, BRIDGE_IFACE, strlen(BRIDGE_IFACE) + 1) == -1)
+	{
+		dbg("sj: SO_BINDTODEVICE failed\n");
+		close(dhcpv6_info_sock.fd);
+		return -1;
+	}
+	else
+	{
+		dbg("sj: bind to bridge succesed\n");
+	}
+
+	/* create muticast listener thread */
+	pthread_mutexattr_init(&mattrs);
+	//pthread_mutexattr_settype(&mattrs, PTHREAD_MUTEX_FAST_NP);
+	if (pthread_mutex_init(&dhcpv6_info_sock.send_mutex, &mattrs) ||
+			pthread_rwlock_init(&handler_lock_dhcpv6_info, NULL) ||
+			pthread_create(&dhcpv6_info_sock_listener, NULL, dhcpv6_info_listen, NULL))
+		return -1;
+	return 0;
+}
+#endif

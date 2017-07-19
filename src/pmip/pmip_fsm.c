@@ -353,8 +353,11 @@ int mag_fsm_v4(msg_info_t * info)
 	char macStr[MAC_ADDR_NUM_CHARS];
 
 	memset (&prefix,0,sizeof (struct in_addr));
-	char command[200];
-	char buff[200];
+	char command[MAX_DHCP_COMMAND_STR_LEN] = {0};
+	char buff[200]= {0};
+	char temp[100]={0};
+	int isprimdnsvalid = 0;
+	int issecdnsvalid = 0;
 
 	int type = pmipv4_cache_exists(&conf.OurAddress, &hw_address);
 
@@ -477,9 +480,41 @@ int mag_fsm_v4(msg_info_t * info)
 								memcpy(home_prefix, inet_ntoa(info->v4_home_prefix), INET_ADDRSTRLEN);
 								dbg("BCE_TEMP Got ip in home prefix reply =%s prefix len=%d\n",home_prefix,info->v4_home_prefixlen);
 								//mask.s_addr = prefix_to_mask(info->v4_home_prefixlen);
-								snprintf (command,200 ,"dnsmasq -i %s -I lo -z --dhcp-range=%s,%s,static,%s,43200 --dhcp-hostsfile=/etc/dhcp_hosts ",BRIDGE_IFACE,BRIDGE_IFACE,home_prefix,inet_ntoa(conf.dhcp_sub_mask));
-								snprintf(buff,200, " --dhcp-option-force=6,%s  ",inet_ntoa(conf.PrimaryDns) );
+								snprintf (command,MAX_DHCP_COMMAND_STR_LEN ,"dnsmasq -i %s -I lo -z --dhcp-range=%s,%s,static,%s,43200 --dhcp-hostsfile=/etc/dhcp_hosts ",BRIDGE_IFACE,BRIDGE_IFACE,home_prefix,inet_ntoa(conf.dhcp_sub_mask));
+								if (conf.PrimaryV4Dns.s_addr != 0)
+								{
+									isprimdnsvalid = 1;
+									dbg("primary ipv4 dns is configured\n");
+									snprintf(buff,200, " --dhcp-option-force=6,%s",inet_ntoa(conf.PrimaryV4Dns) );
+								}
+								if (conf.SecondaryV4Dns.s_addr != 0)
+								{
+									issecdnsvalid= 1;
+									if (isprimdnsvalid) //have primary & secondary dns
+									{
+										dbg("Secondary ipv4 dns is also configured\n");
+										snprintf(temp,200, ",%s ",inet_ntoa(conf.SecondaryV4Dns) );
+										strcat(buff,temp);
+									}
+									else //only secondary dns
+									{
+										dbg("Only Secondary ipv4 dns is configured\n");
+										snprintf(buff,200, " --dhcp-option-force=6,%s  ",inet_ntoa(conf.SecondaryV4Dns) );
+									}
+								}
+								if (!isprimdnsvalid && !issecdnsvalid)
+								{
+									dbg("Primary and secondary dns are not configured.dns option will not be added\n");
+								}
+								else
+								{
+									dbg("adding dnsmasq dns option\n");
 								strcat(command,buff);
+								}
+								if (conf.pmip_mode_type == IP_FAMILY_V4V6_V01)
+								{
+									pmip_add_dnsmasq_v6dns_option(command);
+								}
 								system("killall -1 dnsmasq");
 								system("killall -15 dnsmasq");
 								system("killall -9 dnsmasq");
@@ -548,7 +583,7 @@ int mag_fsm_v4(msg_info_t * info)
 							bce->mnv4_addr = info->v4_home_prefix;
 							dbg("Saving MN v4 ip so that while Sending next PBU this can be used\n");
 							bce->dhcp_requested_ip = bce->mnv4_addr;
-							snprintf(command, 200,"echo %s,%s >> /etc/dhcp_hosts",macStr,inet_ntoa(info->v4_home_prefix));
+							snprintf(command, MAX_DHCP_COMMAND_STR_LEN,"echo %s,%s >> /etc/dhcp_hosts",macStr,inet_ntoa(info->v4_home_prefix));
 							dbg("registation comm=%s=\n",command);
 							system(command);
 							//sending signal to dnsmasq to re-read hosts file

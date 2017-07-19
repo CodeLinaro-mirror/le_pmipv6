@@ -333,6 +333,10 @@ static void conf_default(struct mip6_config *c)
 	c->MagDeviceEgress               = "";
 	c->LmaAddress                    = in6addr_loopback;
 	c->OurAddress                    = in6addr_loopback;
+	memset(&c->PrimaryV6Dns,0,sizeof(c->PrimaryV6Dns));
+	memset(&c->SecondaryV6Dns,0,sizeof(c->SecondaryV6Dns));
+	memset(&c->PrimaryV4Dns,0,sizeof(c->PrimaryV4Dns));
+	memset(&c->SecondaryV4Dns,0,sizeof(c->SecondaryV4Dns));
 	//Lifetime for PB entry
 	struct timespec lifetime4;
 	lifetime4.tv_sec  = 40;
@@ -464,7 +468,10 @@ void conf_show(struct mip6_config *c)
 	dbg("LmaAddress v4 addr                       = %s\n", inet_ntoa(c->LmaV4Address));
 	dbg("Pmipv4 DMNP prefix                       = %s\n", inet_ntoa(c->PMIPV4SecRouterDMNPPrefix));
 	dbg("Pmipv4 DMNP prefix len                       = %d\n", c->PMIPV4SecRouterdmnpPrefixLen);
-	dbg("Primary DNS Server                       = %s\n", inet_ntoa(c->PrimaryDns));
+	dbg("Primary v4 DNS Server                       = %s\n", inet_ntoa(c->PrimaryV4Dns));
+	dbg("Secondary v4 DNS Server                       = %s\n", inet_ntoa(c->SecondaryV4Dns));
+	dbg("Primary v6 DNS Server                       = %x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(&c->PrimaryV6Dns));
+	dbg("Primary v6 DNS Server                       = %x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(&c->SecondaryV6Dns));
 	if (is_mag()) {
 		dbg("MagAddressIngress                 = %x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(&c->MagAddressIngress));
 		dbg("MagAddressEgress                  = %x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(&c->MagAddressEgress));

@@ -53,6 +53,7 @@ static int pmip_cache_get_prefix_match(void *data, void *arg, void *usr_data)
 	return 0;
 }
 
+
 //---------------------------------------------------------------------------------------------------------------------
 int mag_setup_route(struct in6_addr *pmip6_addr, int downlink)
 {
@@ -120,7 +121,7 @@ int mag_remove_v4_route(struct in_addr mn_v4_addr, char *table)
 }
 int mag_setup_v6_route(struct in6_addr mn_v6_addr, char *table)
 {
-	char command[200];
+	char command[200]={0};;
 	char str[INET6_ADDRSTRLEN];
 	if (table == NULL)
 	{
@@ -143,7 +144,7 @@ BRIDGE_IFACE);
 
 int mag_remove_v6_route(struct in6_addr mn_v6_addr, char *table)
 {
-	char command[200];
+	char command[200]={0};
 	char str[INET6_ADDRSTRLEN];
 	if (table == NULL)
 	{
@@ -514,6 +515,11 @@ int mag_kickoff_ra(pmip_entry_t * bce)
 	struct nd_router_advert *radvert;
 	adv_prefix_t prefix;
 	unsigned char buff[MSG_SIZE];
+	struct rdnss_info *rdnss;
+	char v6add_strprim[INET6_ADDRSTRLEN] = {0};
+	char v6add_strsec[INET6_ADDRSTRLEN] = {0};
+	int haspridns = 0;
+	int hassecdns = 0;
 	size_t len = 0;
 	memset(&buff, 0, sizeof(buff));
 	radvert = (struct nd_router_advert *) buff;
@@ -560,6 +566,56 @@ int mag_kickoff_ra(pmip_entry_t * bce)
 		memcpy(buff + len, &ha_info, sizeof(ha_info));
 		len += sizeof(ha_info);
 	}
+
+	//Rdnss info
+	rdnss = (struct rdnss_info *) (buff + len);
+	inet_ntop(AF_INET6, &conf.PrimaryV6Dns, v6add_strprim, sizeof v6add_strprim);
+	if (strncmp (v6add_strprim, "::", sizeof("::")))
+	{
+		dbg("Adding primary public RDNSS In RA success rdnss ip %s\n", v6add_strprim);
+		haspridns = 1;
+
+		rdnss->primarydns = conf.PrimaryV6Dns;
+	}
+
+	inet_ntop(AF_INET6, &conf.SecondaryV6Dns, v6add_strsec, sizeof v6add_strsec);
+	if(strncmp (v6add_strsec, "::", sizeof("::")))
+	{
+		dbg("Adding Secondary public RDNSS In RA success rdnss ip %s\n", v6add_strsec);
+		hassecdns = 1;
+		if (haspridns) //have both dns server
+		{
+			rdnss->secondarydns = conf.SecondaryV6Dns;
+		}
+		else //have only secondary dns server
+		{
+			rdnss->primarydns = conf.SecondaryV6Dns;
+		}
+	}
+
+	if (!haspridns && !hassecdns)
+	{
+		dbg("No DNS info available. RA will not have RDNSS\n");
+	}
+	else
+	{
+		dbg("Adding RDNSS in RA\n");
+		rdnss->type = RDNSS_SERVER_TYPE;
+		rdnss->reserved = 0;
+		rdnss->lifetime= INFINITE_LIFE_TIME;
+		//rdnss lenth will determine the Numebr of DNS in RA
+		if (haspridns && hassecdns)
+		{
+		rdnss->length = (sizeof(struct rdnss_info))/sizeof(uint64_t);
+		len += sizeof(struct rdnss_info);
+		}
+		else
+		{
+			rdnss->length = (sizeof(struct rdnss_info) - sizeof(struct in6_addr))/sizeof(uint64_t);
+			len += (sizeof(struct rdnss_info) - sizeof(struct in6_addr)) ;
+		}
+	}
+
 	iov.iov_len = len;
 	iov.iov_base = (caddr_t) buff;
 	int err;

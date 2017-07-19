@@ -2,6 +2,8 @@
 ## Process this file with automake to produce Makefile.in
 
 AM_CFLAGS = -Wall -g -Wpointer-arith -Wreturn-type -pedantic -std=gnu99 -DUSE_RADIUS -DCACHE_RADIUS
+## Uncomment if DHCPV6 packet needed to send to Tunnel
+#AM_CFLAGS += -DFORWARD_DHCPV6_TO_TUNNEL
 AM_CPPFLAGS = -isystem ../include -I../src -I./pmip -I/usr/local/include
 AM_YFLAGS = -d
 

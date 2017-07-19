@@ -171,7 +171,10 @@ RFC5213TimestampValidityWindow			{ return RFC5213TIMESTAMPVALIDITYWINDOW; }
 RFC5213EnableMAGLocalRouting			{ return RFC5213ENABLEMAGLOCALROUTING; }
 LmaAddress					{ return LMAADDRESS; }
 LmaV4Address					{ return LMAV4ADDRESS; }
-PrimaryDns					{ return PRIMARYDNS; }
+PrimaryV4Dns					{ return PRIMARYV4DNS; }
+SecondaryV4Dns					{ return SECONDARYV4DNS; }
+PrimaryV6Dns					{ return PRIMARYV6DNS; }
+SecondaryV6Dns					{ return SECONDARYV6DNS; }
 PMIPV4SecRouterDMNPPrefix					{ return PMIPV4SECROUTERDMNPPREFIX; }
 PMIPV4SecRouterdmnpPrefixLen					{ return PMIPV4SECROUTERDMNPPREFIXLEN; }
 LmaPmipNetworkDevice                            { return LMAPMIPNETWORKDEVICE; }

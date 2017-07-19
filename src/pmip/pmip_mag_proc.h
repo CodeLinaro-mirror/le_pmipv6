@@ -51,6 +51,21 @@
 #	include <netinet/ip6.h>
 #	include "pmip_cache.h"
 #	include "pmip_msgs.h"
+
+struct rdnss_info {
+  uint8_t type;
+  uint8_t length;
+  uint16_t reserved;
+  uint32_t lifetime;
+  struct in6_addr primarydns;
+  struct in6_addr secondarydns;
+};
+#define RDNSS_SERVER_TYPE 25 //Recursive DNS server Type
+#define INFINITE_LIFE_TIME htonl(0xffffffff) //infinite life time
+
+
+
+
 //-PROTOTYPES----------------------------------------------------------------------------
 /*! \fn int mag_setup_route(struct in6_addr *pmip6_addr, int downlink)
 * \brief	Set a route on a MAG for reaching a mobile node.

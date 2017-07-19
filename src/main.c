@@ -215,7 +215,7 @@ int main(int argc, char **argv)
 	int logflags = 0;
 	int ret = 1;
 	struct in_addr sa;
-	char command[200];
+	char command[MAX_DHCP_COMMAND_STR_LEN] = {0};
 
 	debug_init();
 
@@ -301,12 +301,37 @@ int main(int argc, char **argv)
 		dbg("Tunnel mode is not v4 so dont do mhv4_init\n");
 	}
 	//based on pmip mode listen for traffic
-	if ((conf.pmip_mode_type == IP_FAMILY_V6_V01) ||(conf.pmip_mode_type == IP_FAMILY_V4V6_V01))
+	if (is_mag() && ((conf.pmip_mode_type == IP_FAMILY_V6_V01) ||(conf.pmip_mode_type == IP_FAMILY_V4V6_V01)))
 	{
 		dbg(" pmip mode is v6 so enable icmpv6 deamon\n");
 		if (icmp6_init() < 0)
 			goto icmp6_failed;
-	} else {
+
+		//comment code for forwading dhcpv6 packet to tunnel may be need in future
+#ifdef FORWARD_DHCPV6_TO_TUNNEL
+		dbg("All dhcpv6 packet will not be forwading to Tunnel\n");
+		if (dhcpv6_info_init() < 0) {
+			dbg ("dhcpv6_info_init failed\n");
+			//goto fail;;
+		}
+		else
+			dbg ("Multicast init passed\n");
+#endif
+		if (conf.pmip_mode_type != IP_FAMILY_V4V6_V01) //in case of V4V6 it will be handle in pmipv4 case
+		{
+			//Add dnsmasq option to provide dhcpv6 info
+			if (pmipv6_start_dnsmasq_with_dhcpv6_option() < 0)
+				dbg ("dnsmasq dhcpv6 option addition failed\n");
+			else
+				dbg ("dnsmasq dhcpv6 option addition successful\n");
+		}
+		else
+		{
+			dbg ("Pmip mode is v4v6 . dnsmasq dhcpv6 dns option will be added in pmipv4\n");
+		}
+	}
+	else
+	{
 		dbg("pmip mode is v4 so dont enable icmpv6 deamon\n");
 	}
 	if (is_mag() && (conf.pmip_mode_type == IP_FAMILY_V4_V01 || conf.pmip_mode_type == IP_FAMILY_V4V6_V01)) {
@@ -318,7 +343,15 @@ int main(int argc, char **argv)
 		system("killall -9 dnsmasq");
 		ret = getifaceip(&sa, BRIDGE_IFACE);
 		if (ret == 0) {
-			snprintf (command,200,"dnsmasq -i %s -I lo -z --dhcp-range=%s,%s,static,255.255.255.0,43200 --dhcp-hostsfile=/etc/dhcp_hosts --dhcp-option-force=6,%s --dhcp-option-force=3,%s",BRIDGE_IFACE,BRIDGE_IFACE,inet_ntoa(sa),inet_ntoa(sa),inet_ntoa(sa));
+			snprintf (command,MAX_DHCP_COMMAND_STR_LEN,"dnsmasq -i %s -I lo -z --dhcp-range=%s,%s,static,255.255.255.0,43200 --dhcp-hostsfile=/etc/dhcp_hosts --dhcp-option-force=6,%s --dhcp-option-force=3,%s",BRIDGE_IFACE,BRIDGE_IFACE,inet_ntoa(sa),inet_ntoa(sa),inet_ntoa(sa));
+			if (conf.pmip_mode_type == IP_FAMILY_V4V6_V01)
+			{
+				dbg ("Add dnsmasq ipv6 dnsoption\n");
+				if (pmip_add_dnsmasq_v6dns_option(command) < 0)
+				{
+					dbg("pmip_add_dnsmasq_v6dns_option failed\n");
+				}
+			}
 			dbg("main dnsmasq command =%s=",command);
 			system(command);
 		} else {

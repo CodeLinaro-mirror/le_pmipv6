@@ -4,6 +4,18 @@
 #define __ICMP6_H__ 1
 
 #include <netinet/icmp6.h>
+#include <linux/types.h>
+#include <linux/udp.h>
+#include <linux/if_packet.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <net/ethernet.h>
+#include <errno.h>
+#include <string.h>
+
+
+#define BRIDGE_IFACE "bridge0"
+#define MAX_DHCP_COMMAND_STR_LEN 4000
 
 struct icmp6_handler {
 	struct icmp6_handler *next;
@@ -14,6 +26,22 @@ struct icmp6_handler {
 		      int iif,
 		      int hoplimit);
 };
+
+#ifdef FORWARD_DHCPV6_TO_TUNNEL
+#define DHCP_SERVER_PORT_V6 547
+struct ipv6hdr {
+	__u8			priority:4,
+				version:4;
+	__u8			flow_lbl[3];
+
+	__u16			payload_len;
+	__u8			nexthdr;
+	__u8			hop_limit;
+
+	struct	in6_addr	saddr;
+	struct	in6_addr	daddr;
+};
+#endif
 
 #define ICMP6_MAIN_SOCK -1
 
@@ -39,5 +67,19 @@ struct ip6_hdr;
 
 int icmp6_parse_data(struct ip6_hdr *ip6h, unsigned int len,
 		     struct in6_addr **lhoa, struct in6_addr **rhoa);
+
+#ifdef FORWARD_DHCPV6_TO_TUNNEL
+int dhcpv6_info_init(void);
+static void *dhcpv6_info_listen(void *arg);
+int dhcpv6_info_recv(int sockfd, unsigned char *buf, size_t msglen,
+		unsigned char *ether_shost);
+int forward_msg_to_tunnel(unsigned char *buf,ssize_t len, char *fname);
+int create_sender_sock(int *sock, char *fname);
+static void pmip_mag_dhcpv6_info_hand(unsigned char *buf, size_t msglen,
+		unsigned char *ether_shost);
+
+
+
+#endif
 
 #endif

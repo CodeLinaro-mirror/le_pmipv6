@@ -21,6 +21,12 @@ struct sock {
     pthread_mutex_t send_mutex;
     int fd;
 };
+struct sock_def {
+    pthread_mutex_t send_mutex;
+    int udp_sock_fd;
+    int ip_sock_fd;
+};
+
 
 struct in6_addr_bundle {
 	struct in6_addr *src;
@@ -86,7 +92,7 @@ ssize_t mh_recv(unsigned char *msg, size_t msglen,
 		struct sockaddr_in6 *addr, struct in6_pktinfo *pkt_info,
 		struct in6_addr *hoa, struct in6_addr *rtaddr);
 ssize_t mhv4_recv(unsigned char *msg, size_t msglen,
-		struct sockaddr_in *addr, struct in_pktinfo *pkt_info);
+		struct sockaddr_in *addr, struct in_pktinfo *pkt_info, size_t *offset);
 
 
 /* Mobility header and option creation functions */

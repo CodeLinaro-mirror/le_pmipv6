@@ -122,7 +122,7 @@ void pmip_timer_retrans_pbu_handler(struct tq_elem *tqe)
 			{
 				addrs.src = &conf.OurAddress;
 				addrs.dst = &conf.LmaAddress;
-				pmip_mh_send(&addrs, e->mh_vec, e->iovlen, 0);
+				pmip_mh_send(&addrs, e->mh_vec, e->iovlen, 0, 0);
 
 			}
 			if  (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
@@ -130,7 +130,7 @@ void pmip_timer_retrans_pbu_handler(struct tq_elem *tqe)
 				//store v4 address in v6 format will parse back v4 while sending packet
 				addrs1.src = &conf.Magv4AddressEgress;
 				addrs1.dst = &conf.LmaV4Address;
-				pmipv4_mh_send(&addrs1, e->mh_vec, e->iovlen, 0);
+				pmipv4_mh_send(&addrs1, e->mh_vec, e->iovlen, 0, 0);
 			}
 
 			//add a new task for PBU retransmission.
@@ -212,7 +212,7 @@ void pmip_timer_retrans_pbu_handlerv4(struct tq_elem *tqe)
 			{
 				addrs.src = &conf.OurAddress;
 				addrs.dst = &conf.LmaAddress;
-				pmip_mh_send(&addrs, e->mh_vec, e->iovlen, 0);
+				pmip_mh_send(&addrs, e->mh_vec, e->iovlen, 0, 1);
 
 			}
 			if  (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
@@ -220,7 +220,7 @@ void pmip_timer_retrans_pbu_handlerv4(struct tq_elem *tqe)
 				//store v4 address in v6 format will parse back v4 while sending packet
 				addrs1.src = &conf.Magv4AddressEgress;
 				addrs1.dst = &conf.LmaV4Address;
-				pmipv4_mh_send(&addrs1, e->mh_vec, e->iovlen, 0);
+				pmipv4_mh_send(&addrs1, e->mh_vec, e->iovlen, 0, 1);
 			}
 
 			//add a new task for PBU retransmission.
@@ -468,6 +468,8 @@ void pmip_timer_bce_expired_handler(struct tq_elem *tqe)
 		}
 		if (is_mag()) {
 			dbg("Send NS for Neighbour Reachability for:%x:%x:%x:%x:%x:%x:%x:%x iif=%d\n", NIP6ADDR(&e->mn_hw_address), e->link);
+
+			dbg("mcast:%x:%x:%x:%x:%x:%x:%x:%x mn addr=%x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(solicited_mcast(&e->mn_suffix)),NIP6ADDR(get_mn_addr(e)));
 			//Create NS for Reachability test!
 			ndisc_send_ns(e->link, &conf.MagAddressIngress, solicited_mcast(&e->mn_suffix), get_mn_addr(e));
 

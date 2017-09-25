@@ -91,6 +91,7 @@ static void conf_usage(char *exec_name)
 			"  -s,  --dhcp-start-ip         dhcp LAN start ip\n"
 			"  -e,  --dhcp-end-ip           dhcp LAN end ip\n"
 			"  -j,   --subnet-mask          dhcp LAN subnet mask\n"
+			"  -i,  --mobile-node-identifier-type mobile node identifier type"
 			"For bug reporting, see %s.\n", exec_name, PACKAGE_BUGREPORT);
 }
 
@@ -216,6 +217,7 @@ static int conf_cmdline(struct mip6_config *cfg, int argc, char **argv)
 		{"dhcp-start-ip", 0, 0, 's'},
 		{"dhcp-end-ip", 0, 0, 'e'},
 		{"subnet-mask", 0, 0, 'j'},
+		{"mobile-node-identifier-type", 0, 0, 'i'},
 		{"show-config", 0, 0, 0},
 #ifdef ENABLE_VT
 		{"vt-service", 1, 0, 0 },
@@ -226,7 +228,7 @@ static int conf_cmdline(struct mip6_config *cfg, int argc, char **argv)
 	/* parse all other cmd line parameters than -c */
 	while (1) {
 		int idx, c;
-		c = getopt_long(argc, argv, "t:j:e:s:w:m:c:d:l:Vh?CMH", long_opts, &idx);
+		c = getopt_long(argc, argv, "t:j:e:s:w:m:i:c:d:l:Vh?CMH", long_opts, &idx);
 		if (c == -1) break;
 
 		switch (c) {
@@ -249,6 +251,21 @@ static int conf_cmdline(struct mip6_config *cfg, int argc, char **argv)
 				return -1;
 			case 'd':
 				cfg->debug_level = atoi(optarg);
+				break;
+			case 'i':
+				cfg->mobile_node_identifier_type = atoi(optarg);
+					//checking validity
+				if ((cfg->mobile_node_identifier_type == MOBILE_NODE_IDENTIFIER_TYPE_MAC) ||
+					(cfg->mobile_node_identifier_type == MOBILE_NODE_IDENTIFIER_TYPE_STRING))
+				{
+					system("echo 'pmip: valid mobile node identifier type ' > /dev/kmsg");
+					break;
+				}
+				else
+				{
+					system("echo 'pmip: Invalid mobile node identifier type ' > /dev/kmsg");
+					return -1;
+				}
 				break;
 			case 'm':
 				cfg->pmip_mode_type= atoi(optarg);
@@ -389,6 +406,8 @@ static void conf_default(struct mip6_config *c)
 	c->MagAddressIngress             = in6addr_loopback;
 	c->MagAddressEgress              = in6addr_loopback;
 	c->MagDeviceIngress              = "";
+	c->ServiceSelectionIdentifier    = "";
+	c->MnIdString             = "";
 	c->MagDeviceEgress               = "";
 	c->LmaAddress                    = in6addr_loopback;
 	c->OurAddress                    = in6addr_loopback;
@@ -421,6 +440,7 @@ static void conf_default(struct mip6_config *c)
 	//set default pmip mode
 	c->pmip_mode_type = IP_FAMILY_V6_V01;
 	c->pmipv4_work_mode_type = 0;
+	c->mobile_node_identifier_type = MOBILE_NODE_IDENTIFIER_TYPE_MAC;
 	c->is_dnsmasq_started_on_pba = 0;
     c->pmip_tunnel_mode = IP_FAMILY_V6_V01;
 
@@ -523,6 +543,7 @@ void conf_show(struct mip6_config *c)
 	dbg("RFC5213EnableMAGLocalRouting = %s\n", CONF_BOOL_STR(c->RFC5213EnableMAGLocalRouting));
 
 	dbg("AllLmaMulticastAddress            = %x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(&c->AllLmaMulticastAddress));
+	dbg("Pmip MAx Log file size in MB      = %d\n", c->PmipMaxLogFileSize);
 	dbg("LmaAddress                        = %x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(&c->LmaAddress));
 	dbg("LmaAddress v4 addr                       = %s\n", inet_ntoa(c->LmaV4Address));
 	dbg("Pmipv4 DMNP prefix                       = %s\n", inet_ntoa(c->PMIPV4SecRouterDMNPPrefix));
@@ -538,12 +559,15 @@ void conf_show(struct mip6_config *c)
 		dbg("Magv4AddressEgress                  = %s\n", inet_ntoa(c->Magv4AddressEgress));
 		dbg("MagDeviceIngress                  = %s\n", (c->MagDeviceIngress ? c->MagDeviceIngress : "No device"));
 		dbg("MagDeviceEgress                   = %s\n", (c->MagDeviceEgress ? c->MagDeviceEgress : "No device"));
+		dbg("ServiceSelectionIdentifier        = %s\n", c->ServiceSelectionIdentifier);
+		dbg("MnIdString                 = %s\n", c->MnIdString);
 		dbg("PBULifeTime                       = %u.%9u seconds\n",c->PBULifeTime.tv_sec,c->PBULifeTime.tv_nsec);
 		dbg("RetransmissionTimeOut             = %u.%9u seconds\n",c->RetransmissionTimeOut.tv_sec,c->RetransmissionTimeOut.tv_nsec);
 		dbg("RadiusClientConfigFile            = %s\n", (c->RadiusClientConfigFile ? c->RadiusClientConfigFile : "No Config file"));
 		dbg("RadiusPassword                    = %s\n", (c->RadiusPassword ? c->RadiusPassword : "No password"));
 		dbg("PcapSyslogAssociationGrepString   = %s\n", (c->PcapSyslogAssociationGrepString ? c->PcapSyslogAssociationGrepString : "No syslog association grep string"));
 		dbg("PcapSyslogDeAssociationGrepString = %s\n", (c->PcapSyslogDeAssociationGrepString ? c->PcapSyslogDeAssociationGrepString : "No syslog de-association grep string"));
+		dbg("mobile_node_identifier_type                 = %d\n", c->mobile_node_identifier_type);
 	}
 	dbg("OurAddress                        = %x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(&c->OurAddress));
 	dbg("HomeNetworkPrefix                 = %x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(&c->HomeNetworkPrefix));

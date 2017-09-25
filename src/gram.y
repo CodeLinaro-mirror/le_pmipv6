@@ -215,6 +215,8 @@ static void uerror(const char *fmt, ...) {
 %token		MAG3ADDRESSINGRESS
 %token		MAG3ADDRESSEGRESS
 %token		MAGDEVICEINGRESS
+%token		SERVICESELECTIONIDENTIFIER
+%token		MNIDSTRING
 %token		MAGDEVICEEGRESS
 %token		OURADDRESS
 %token		HOMENETWORKPREFIX
@@ -237,6 +239,7 @@ static void uerror(const char *fmt, ...) {
 %token <addrv4>	MAGV4ADDRESSEGRESS
 %token <addrv4>	 PMIPV4SECROUTERDMNPPREFIX
 %token 	 PMIPV4SECROUTERDMNPPREFIXLEN
+%token 	 PMIPMAXLOGFILESIZE
 %token		INV_TOKEN
 
 %type <num>	ipsectype
@@ -934,6 +937,10 @@ proxymipmagopt	: LMAADDRESS ADDR ';'
 		{
 			conf.PMIPV4SecRouterdmnpPrefixLen = $2;
 		}
+		| PMIPMAXLOGFILESIZE NUMBER ';'
+		{
+			conf.PmipMaxLogFileSize = $2;
+		}
 		| RFC5213TIMESTAMPBASEDAPPROACHINUSE BOOL ';'
 		{
 			conf.RFC5213TimestampBasedApproachInUse = $2;
@@ -968,7 +975,15 @@ proxymipmagopt	: LMAADDRESS ADDR ';'
 		}
 		| MAGDEVICEINGRESS QSTRING ';'
 		{
-			conf.MagDeviceIngress = $2;		
+			conf.MagDeviceIngress = $2;
+		}
+		| SERVICESELECTIONIDENTIFIER QSTRING ';'
+		{
+			conf.ServiceSelectionIdentifier = $2;
+		}
+		| MNIDSTRING QSTRING ';'
+		{
+			conf.MnIdString = $2;
 		}
 		| MAGDEVICEEGRESS QSTRING ';'
 		{

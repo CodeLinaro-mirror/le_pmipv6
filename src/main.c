@@ -241,6 +241,7 @@ int main(int argc, char **argv)
 
 	dbg("------ pmipv4 work mode %d-------------\n",conf.pmipv4_work_mode_type);
 	dbg("------ pmip Tunnel Mode %d-------------\n",conf.pmip_tunnel_mode);
+
 	openlog(basename(argv[0]), LOG_PID|logflags, LOG_DAEMON);
 
 	syslog(LOG_INFO, "%s v%s started (%s)", PACKAGE_NAME, PACKAGE_VERSION,
@@ -272,6 +273,17 @@ int main(int argc, char **argv)
 					PACKAGE_NAME);
 		}
 		conf_show(&conf);
+	}
+	if (strncmp(conf.ServiceSelectionIdentifier,
+		PMIP_INVALID_ID_STRING,strlen(PMIP_INVALID_ID_STRING)) != 0)
+	{
+		dbg("Note: Service selection string is valid(%s). PBU will have Service Selection Identifier\n", conf.ServiceSelectionIdentifier);
+		conf.is_valid_service_id = 1;
+	}
+	else
+	{
+		dbg("Note: Service selection string is invalid(-1). PBU will not have Service Selection Identifier\n", conf.ServiceSelectionIdentifier);
+		conf.is_valid_service_id = 0;
 	}
 
 	srandom(time(NULL));
@@ -341,7 +353,7 @@ int main(int argc, char **argv)
 		dbg("pmip mode is v4 so dont enable icmpv6 deamon\n");
 	}
 	if (is_mag() && (conf.pmip_mode_type == IP_FAMILY_V4_V01 || conf.pmip_mode_type == IP_FAMILY_V4V6_V01)) {
-		dbg("pmip mode is v4 start dhcp deamon");
+		dbg("pmip mode is v4 start dhcp deamon\n");
 		//start dnsmasq for ipv4
 		dbg("Kiiling dnsmasq . & start dnsmasq to not provide any ip\n");
 		system("killall -1 dnsmasq");

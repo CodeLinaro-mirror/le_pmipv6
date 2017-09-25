@@ -73,8 +73,7 @@ int lma_reg(pmip_entry_t * bce, int is_v4_lma_mode)
 		if  (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
 		{
 			//create a tunnel between MAG and LMA && add a route for peer address.
-			//sj: manully using LMA v4 address some proplem in parsing need to fix
-        bce->tunnel_v4 = pmipv4_tunnel_add(&conf.LmaV4Address, &bce->mn_serv_mag_v4_addr, bce->link, bce->gre_key_valid, bce->gre_key);
+			bce->tunnel_v4 = pmipv4_tunnel_add(&conf.LmaV4Address, &bce->mn_serv_mag_v4_addr, bce->link, bce->gre_key_valid, bce->gre_key);
 		}
 		//ading Route for Ipv6 mn ip in v6 tunnel
 		if (!is_v4_lma_mode && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
@@ -142,7 +141,7 @@ int lma_reg(pmip_entry_t * bce, int is_v4_lma_mode)
 				//add Route
 				snprintf (command,200,"ip route add %s dev %s ",inet_ntoa(bce->mnv4_addr), fname);
 			system (command);
-				dbg("sj: Route table com=%s=\n",command);
+				dbg("Route table com=%s=\n",command);
 		}
 		}
 
@@ -218,8 +217,7 @@ int lma_reg_no_new_tunnel(pmip_entry_t * bce, int is_v4_lma_mode)
 		}
 		else if (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
 		{
-			//sj: manully using LMA v4 address some proplem in parsing need to fix
-        addrs1.src = &conf.LmaV4Address;
+			addrs1.src = &conf.LmaV4Address;
 			addrs1.dst = &bce->mn_serv_mag_v4_addr;
 			mh_send_pba(&addrs1, bce, &bce->lifetime, 0, is_v4_lma_mode);
 		}
@@ -462,7 +460,6 @@ int lma_update_binding_entry(pmip_entry_t * bce, msg_info_t * info, int is_v4_lm
 			{
 				if (!is_v4_lma_mode)
 				{
-#if 1
 					dbg("searching for the prefix for a new BCE entry for pmip v6 mode...\n");
 			r_tmp = lma_mnid_hnp_map(bce->mn_hw_address, &result);
 			if (result >= 0) {
@@ -502,7 +499,7 @@ int lma_update_binding_entry(pmip_entry_t * bce, msg_info_t * info, int is_v4_lm
 
 
 			}
-#endif
+
 				}
 			if (is_v4_lma_mode == 1)
 				{

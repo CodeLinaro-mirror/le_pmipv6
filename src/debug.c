@@ -85,8 +85,33 @@ void dbgprintfilelineinfo(const char *filename,int line_num,const char *fname, c
 {
 	char s[1024];
 	char stime[1024];
+	char command[MAX_COMMAND_STRING_LEN] = {0};
+
 	va_list args;
 	char *filenametm = NULL;
+	struct stat st;
+	uint16_t fsize;
+	if (sdbg != stderr)
+	{
+		//check if file log file size reached to max
+		if (stat(conf.debug_log_file, &st) == 0)
+		{
+			fsize = st.st_size/(1024 * 1024);  //convert  from byte to MB
+			if (fsize >= conf.PmipMaxLogFileSize)
+			{
+				snprintf (command,MAX_COMMAND_STRING_LEN,"echo 'pmip: debug file %s size %u has exceeded from"
+						" max size %u . Empty the debug file content' > /dev/kmsg",conf.debug_log_file,fsize,conf.PmipMaxLogFileSize);
+				pmip_system_call(command,strlen(command),0);
+				snprintf (command,MAX_COMMAND_STRING_LEN,"echo > %s",conf.debug_log_file);
+				pmip_system_call(command,strlen(command),0);
+			}
+		}
+		else
+		{
+			snprintf (command,MAX_COMMAND_STRING_LEN,"echo 'pmip: stat failed for debug file %s'> /dev/kmsg",conf.debug_log_file);
+			system(command);
+		}
+	}
 
 	va_start(args, fmt);
 	vsprintf(s, fmt, args);

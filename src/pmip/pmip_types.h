@@ -28,6 +28,8 @@
 #define PMIP_IPV6_ADDR_LEN 16
 #define PMIP_MAC_ADDR_LEN  6
 #define QCMAP_MSGR_MAC_ADDR_NUM_CHARS_V01 18
+#define PMIP_MAX_IDENTIFIER_STRING_LEN  255
+
 
 
 /*
@@ -156,6 +158,19 @@ typedef struct {
 	__u16				second;
 } ip6ts_t;
 
+typedef struct {
+	__u8				protocol_id[2];
+	__u8				length;
+} protocol_info;
+
+
+typedef struct {
+	__u8				reserve;
+	__u8				extention;
+	protocol_info		proto_info;
+} vendor_data;
+
+
 
 /*! \struct  ip6_mh_opt_mobile_node_identifier_t
 * \brief Mobility Option TLV data structure: Mobile Node Identifier Option (RFC4283).
@@ -164,7 +179,7 @@ struct ip6_mh_opt_mobile_node_identifier_t {
     __u8                ip6mnid_type;   /*!< \brief MN-ID-OPTION-TYPE has been assigned value 8 by the IANA. It is an  8-bit identifier of the type mobility option.*/
     __u8                ip6mnid_len;    /*!< \brief 8-bit unsigned integer, representing the length in octets of the Subtype and Identifier fields.*/
     __u8                ip6mnid_subtype;/*!< \brief Mobile interface identifier subtype .*/
-    ip6mnid_mac_t       ip6mnid_id;     /*!< \brief Mobile interface identifier (MAC address).*/
+    char       ip6mnid_identifier[PMIP_MAX_IDENTIFIER_STRING_LEN];     /*!< \brief Mobile interface identifier */
 } __attribute__ ((__packed__));
 typedef struct ip6_mh_opt_mobile_node_identifier_t ip6_mh_opt_mobile_node_identifier_t;
 
@@ -275,6 +290,31 @@ struct ip6_mh_opt_src_mag_addr_t {
 	struct in6_addr		src_mag_addr;   /* Source MAG Address */
 } __attribute__ ((__packed__));
 typedef struct ip6_mh_opt_src_mag_addr_t ip6_mh_opt_src_mag_addr_t;
+
+/*! \struct  ip6_mh_opt_mobile_node_identifier_t
+* \brief Mobility Option TLV data structure: Mobile Node Identifier Option (RFC4283).
+*/
+struct ip6_mh_opt_service_selection_t {
+    __u8                ip6service_sel_type;   /*!< \brief  It is an  8-bit identifier of the type mobility option.*/
+    __u8                ip6service_sel_len;    /*!< \brief 8-bit unsigned integer, representing the length of the
+                                                                                    Service Selection Mobility Option in octets, excluding the Option
+                                                                                    Type and Option Length fields.*/
+    char                identifier[PMIP_MAX_IDENTIFIER_STRING_LEN];       /*!< \brief service identifier string used to identify the requested service .*/
+} __attribute__ ((__packed__));
+typedef struct ip6_mh_opt_service_selection_t ip6_mh_opt_service_selection_t;
+
+/*! \struct  ip6_mh_opt_vendor_specific_option_t
+*/
+struct ip6_mh_opt_vendor_specific_option_t {
+    __u8                ip6vendor_spec_option_type;   /*!< \brief It is an  8-bit identifier of the type mobility option.*/
+    __u8                ip6vendor_spec_option_len;    /*!< \brief 8-bit unsigned integer, representing the length in octets excluding the Type and the Length fields.*/
+    __u16               ip6vendor_id[2];                 /*!< \brief Vendor Id .*/
+    __u8                ip6sub_type;                  /*!< \brief .An 8-bit field indicating the type of vendor-specific information carried in the option*/
+    vendor_data         ven_data;                  /*!< vendor data*/
+} __attribute__ ((__packed__));
+typedef struct ip6_mh_opt_vendor_specific_option_t ip6_mh_opt_vendor_specific_option_t;
+
+
 
 /*! \struct  msg_info_t
 * \brief Meta structure that can store all usefull information of any PMIP message.

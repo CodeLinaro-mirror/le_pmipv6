@@ -40,11 +40,20 @@
 #    define IP6_MHOPT_LINK_LOCAL_ADDRESS                0x1A   /* link local address */
 #    define IP6_MHOPT_TIME_STAMP                        0x1B   /* Timestamp */
 #    define IP6_MHOPT_GRE_KEY                           0x21   /* GRE KEY */
+#    define IP6_VENDOR_SPECIFIC_OPTION                  0x13   /* IP6_VENDOR_SPECIFIC_OPTION */
+#    define IP6_MHOPT_SERVICE_SELECTION                 0x14   /* SERVICE SELECTION */
+
 //pmipv4 options
 #define IPV4_HOME_ADDR_REQUEST_OPTION 0x24
 #define IPV4_HOME_ADDR_REPLY_OPTION 0x25
 #define IPV4_HOME_DEFAULT_ROUTER_OPTION 0x26
 #define IPV4_DMNP_PREFIX_OPTION 0x37
+
+//vendor option macro
+#define IP6_VENDOR_SPECIFIC_OPTION_VENDOR_ID            0xaf28
+#define IP6_VENDOR_SPECIFIC_OPTION_SUB_TYPE             0x01
+#define IP6_VENDOR_SPECIFIC_OPTION_DATA_PROTOCOL_ID     0x0d
+
 
 #    define IP6_MHOPT_PMIP_MAX                          IPV4_DMNP_PREFIX_OPTION
 

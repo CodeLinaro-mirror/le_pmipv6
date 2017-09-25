@@ -40,8 +40,8 @@ extern int getipforclient(struct in_addr *addr);
 /*! \var struct sock mh_sock
   \brief Global var declared in mipl component
  */
-extern struct sock mh_sock;
-extern struct sock mhv4_sock;
+extern struct sock_def mh_sock;
+extern struct sock_def mhv4_sock;
 
 /* We can use these safely, since they are only read and never change */
 static const uint8_t _pad1[1] = { 0x00 };
@@ -71,6 +71,23 @@ static int pmip_cache_get_bce_mac(void *data, void *arg, void *usr_data)
 	}
 	return 0;
 }
+
+static int pmip_cache_get_mac_from_iid(void *data, void *arg, void *usr_data)
+	//---------------------------------------------------------------------------------------------------------------------
+{
+	pmip_entry_t *bce = (pmip_entry_t *) data;
+	assert(bce && arg && usr_data);
+
+	struct in6_addr * iid = (struct in6_addr *)arg;
+	if(IN6_ARE_ADDR_EQUAL(iid, &bce->mn_suffix))
+	{
+		memcpy(usr_data, (void*)&bce->mn_hw_address, sizeof(struct in6_addr));
+		dbg("#pmip_cache_get_bce_mac set mac to  %x:%x:%x:%x:%x:%x:%x:%x \n",NIP6ADDR((struct in6_addr *)usr_data));
+		return 1;
+	}
+	return 0;
+}
+
 
 static int create_opt_pad(struct iovec *iov, int pad)
 {
@@ -883,8 +900,8 @@ int mh_create_opt_v4_default_router_opt(struct iovec *iov)
 	opt->res = 0;
 	//opt->ip4hnp_prefix= *Home_Network_IP;
 	//getting Ip address
-	dbg ("mh_create_opt_v4_default_router_opt %s ip for connection \n","192.168.77.1");
-	inet_aton("192.168.77.1", &opt->default_router_addr);
+	dbg ("mh_create_opt_v4_default_router_opt %s ip for connection \n","0.0.0.0");
+	inet_aton("0.0.0.0", &opt->default_router_addr);
 
 	return 0;
 }
@@ -1008,17 +1025,38 @@ Subtype field of this option.
 This option does not have any alignment requirements.
 
 	 */
+	char macStr[MAC_ADDR_NUM_CHARS] = {0};
+	mac_addr_ntop(MN_ID, (char *)&macStr);
 	ip6_mh_opt_mobile_node_identifier_t *opt;
-	size_t optlen = sizeof(ip6_mh_opt_mobile_node_identifier_t);
-	iov->iov_base = malloc(optlen);
-	iov->iov_len = optlen;
+	size_t optlen;
+	iov->iov_base = malloc(sizeof(ip6_mh_opt_mobile_node_identifier_t));
 	if (iov->iov_base == NULL)
 		return -ENOMEM;
 	opt = (ip6_mh_opt_mobile_node_identifier_t *) iov->iov_base;
+	memset(opt, 0, sizeof(ip6_mh_opt_mobile_node_identifier_t));
+
+	if (conf.mobile_node_identifier_type == MOBILE_NODE_IDENTIFIER_TYPE_MAC)
+	{
+		dbg("MAC address identifier type & mh_create_opt_mobile_node_identifier mac %s\n",macStr);
+		optlen = ((sizeof(ip6_mh_opt_mobile_node_identifier_t) - sizeof(opt->ip6mnid_identifier)) + strlen(macStr));
+		memcpy (opt->ip6mnid_identifier, macStr, (MAC_ADDR_NUM_CHARS -1));
+	}
+	else if (conf.mobile_node_identifier_type == MOBILE_NODE_IDENTIFIER_TYPE_STRING)
+	{
+		dbg("MN Identifier type is string\n");
+		optlen = ((sizeof(ip6_mh_opt_mobile_node_identifier_t) - sizeof(opt->ip6mnid_identifier)) + strlen(conf.MnIdString));
+		memcpy (opt->ip6mnid_identifier, conf.MnIdString, strlen(conf.MnIdString));
+		dbg("Identifier string =%s=\n",opt->ip6mnid_identifier);
+	}
+	else
+	{
+		dbg("INVALID identifier type\n");
+		return -1;
+	}
+	iov->iov_len = optlen;
 	opt->ip6mnid_type    = IP6_MHOPT_MOBILE_NODE_IDENTIFIER;
-	opt->ip6mnid_len     = IP6_MHOPT_MOBILE_NODE_IDENTIFIER_LEN;  //set to 7 bytes.
+	opt->ip6mnid_len = (strlen(opt->ip6mnid_identifier) + 1);
 	opt->ip6mnid_subtype = subtype;
-	memcpy (opt->ip6mnid_id.mac_addr, MN_ID->mac_addr, PMIP_MAC_ADDR_LEN);
 	return 0;
 }
 //---------------------------------------------------------------------------------------------------------------------
@@ -1271,6 +1309,151 @@ int mh_create_opt_src_mag_addr(struct iovec *iov, struct in6_addr *src_mag_addr)
 	opt->src_mag_addr = *src_mag_addr;
 	return 0;
 }
+
+//---------------------------------------------------------------------------------------------------------------------
+int mh_create_opt_service_selection(struct iovec *iov)
+{
+	/* From RFC 5149
+	   3.  Service Selection Mobility Option
+
+		  At most one Service Selection Mobility Option MAY be included in any
+		  Binding Update message.  If the Binding Update message includes any
+		  authorization-related options (such as the Binding Authorization Data
+		  option [2]) or authentication related options (such as the Mobility
+		  Message Authentication option [8]), then the Service Selection option
+		  MUST appear before any mobility message authorization- or
+		  authentication-related options.
+
+		  The Service Selection option SHOULD NOT be sent to a correspondent
+		  node.  The mobile node cannot assume that the correspondent node has
+		  any knowledge about a specific service selection made between the
+		  mobile node and the home agent.
+
+		  The Service Selection option has no alignment requirement as such.
+
+
+		   0				   1				   2				   3
+		   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+										  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+										  |  Type = 20	  |   Length	  |
+		  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+		  | Identifier...
+		  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+							Service Selection Mobility Option
+
+	 o	Type: 8-bit identifier set to 20 of the type of the skipable
+		  mobility option.
+
+	   o  Length: 8-bit unsigned integer, representing the length of the
+		  Service Selection Mobility Option in octets, excluding the Option
+		  Type and Option Length fields.  A value of zero (0) is not
+		  allowed.
+
+	   o  Identifier: A variable-length encoded service identifier string
+		  used to identify the requested service.  The identifier string
+		  length is between 1 and 255 octets.  This specification allows
+		  international identifier strings that are based on the use of
+		  Unicode characters, encoded as UTF-8 [3], and formatted using
+		  Normalization Form KC (NFKC) as specified in [4].
+
+	 */
+	dbg("service selection string ==%s= strlen%d=\n",conf.ServiceSelectionIdentifier,strlen(conf.ServiceSelectionIdentifier));
+	if (strlen(conf.ServiceSelectionIdentifier) == 0)
+	{
+		dbg("invalid string length \n");
+		return -1;
+	}
+	ip6_mh_opt_service_selection_t *opt;
+	size_t optlen = ((sizeof(ip6_mh_opt_service_selection_t) - sizeof(opt->identifier)) + strlen(conf.ServiceSelectionIdentifier));
+	dbg("optlen %d\n",optlen);
+	dbg("sizeof(ip6_mh_opt_service_selection_t)=%d,, sizeof(opt->identifier)=%d,, strlen(conf.ServiceSelectionIdentifier)=%d\n",sizeof(ip6_mh_opt_service_selection_t),sizeof(opt->identifier),strlen(conf.ServiceSelectionIdentifier));
+	iov->iov_base = malloc(sizeof(ip6_mh_opt_service_selection_t));
+	iov->iov_len = optlen;
+	if (iov->iov_base == NULL)
+		return -ENOMEM;
+	opt = (ip6_mh_opt_service_selection_t *) iov->iov_base;
+	memset(opt, 0, sizeof(ip6_mh_opt_service_selection_t));
+	opt->ip6service_sel_type= IP6_MHOPT_SERVICE_SELECTION;
+	memcpy (opt->identifier, conf.ServiceSelectionIdentifier, strlen(conf.ServiceSelectionIdentifier));
+	dbg("identifier string=%s=, len=%d\n",opt->identifier,strlen(opt->identifier));
+	opt->ip6service_sel_len     = strlen(opt->identifier);
+	return 0;
+}
+
+//---------------------------------------------------------------------------------------------------------------------
+int mh_create_opt_vendor_specific_option(struct iovec *iov)
+{
+	/* From RFC 5094
+	 3.  Vendor-Specific Mobility Option
+
+		The Vendor Specific Mobility Option can be included in any Mobility
+		Header message and has an alignment requirement of 4n+2.  If the
+		Mobility Header message includes a Binding Authorization Data option
+		[2], then the Vendor Specific mobility option should appear before
+		the Binding Authorization Data option.	Multiple Vendor-Specific
+		mobility options MAY be present in a Mobility Header message.
+
+		   0				   1				   2				   3
+		   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+										  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+										  | 	Type	  |   Length	  |
+		  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+		  | 						Vendor ID							  |
+		  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+		  |   Sub-Type	  | 			Data.......
+		  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+		Type
+
+		   An 8-bit field indicating that it is a Vendor-Specific mobility
+		   option.
+
+		Length
+
+		   An 8-bit field indicating the length of the option in octets
+		   excluding the Type and the Length fields.  All other fields are
+		   included.
+
+		Vendor ID
+
+		   The SMI Network Management Private Enterprise Code of the IANA-
+		   maintained Private Enterprise Numbers registry [5].
+
+	 Sub-type
+
+		 An 8-bit field indicating the type of vendor-specific information
+		 carried in the option.  The administration of the Sub-type is done
+		 by the Vendor.
+
+
+	  Data
+
+		 Vendor-specific data that is carried in this message.
+	 */
+	dbg("Adding Vendor specific option\n");
+	ip6_mh_opt_vendor_specific_option_t *opt;
+	size_t optlen = sizeof(ip6_mh_opt_vendor_specific_option_t);
+	iov->iov_base = malloc(optlen);
+	iov->iov_len = optlen;
+	if (iov->iov_base == NULL)
+		return -ENOMEM;
+	opt = (ip6_mh_opt_vendor_specific_option_t *) iov->iov_base;
+	opt->ip6vendor_spec_option_type = IP6_VENDOR_SPECIFIC_OPTION;
+	opt->ip6vendor_id[0] = 0;
+	opt->ip6vendor_id[1] = (IP6_VENDOR_SPECIFIC_OPTION_VENDOR_ID);
+	opt->ip6sub_type = IP6_VENDOR_SPECIFIC_OPTION_SUB_TYPE;
+	opt->ven_data.reserve = 0;
+	opt->ven_data.extention = 0x80;
+	opt->ven_data.proto_info.length = 0;
+	opt->ven_data.proto_info.protocol_id[0] = 0;
+	opt->ven_data.proto_info.protocol_id[1] = IP6_VENDOR_SPECIFIC_OPTION_DATA_PROTOCOL_ID;
+	opt->ip6vendor_spec_option_len = sizeof(ip6_mh_opt_vendor_specific_option_t) - 2;
+	dbg("whole size %d,vendor struct size %d,protocol struct size %d,\n",sizeof(ip6_mh_opt_vendor_specific_option_t),sizeof(opt->ven_data),sizeof(opt->ven_data.proto_info));
+	return 0;
+}
+
+
 //---------------------------------------------------------------------------------------------------------------------
 int mh_pbu_parse(msg_info_t * info, struct ip6_mh_binding_update *pbu, ssize_t len, void *addrs, int iif)
 {
@@ -1285,6 +1468,8 @@ int mh_pbu_parse(msg_info_t * info, struct ip6_mh_binding_update *pbu, ssize_t l
 
 	ip_mh_opt_v4_home_addr_request_option_t           *v4_home_addr_request_opt;
 	ip_mh_opt_v4_dmnp_prefix_option_t                  *dmnp_prefix_opt;
+	ip6_mh_opt_service_selection_t                    *service_selection_opt;
+	char str[PMIP_MAX_IDENTIFIER_STRING_LEN] = {0};
 
 	int                                              return_code;
 	bzero(&mh_opts, sizeof(mh_opts));
@@ -1338,9 +1523,17 @@ int mh_pbu_parse(msg_info_t * info, struct ip6_mh_binding_update *pbu, ssize_t l
 	{
 		//copy
 		info->mn_hw_address= in6addr_any;
-		mac_to_ipv6((uint8_t *)mobile_node_identifier_opt->ip6mnid_id.mac_addr, &info->mn_hw_address);
-		dbg("Mobile NodeIdentifier Option (mac): %x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(&info->mn_hw_address));
+		memcpy(str, mobile_node_identifier_opt->ip6mnid_identifier, (mobile_node_identifier_opt->ip6mnid_len -1));
+		dbg("Mobile NodeIdentifier : %s\n", str);
 	}
+
+	service_selection_opt = mh_opt(&pbu->ip6mhbu_hdr, &mh_opts, IP6_MHOPT_SERVICE_SELECTION);
+	if (service_selection_opt) {
+		bzero(str, sizeof(str));
+		memcpy(str, service_selection_opt->identifier, (service_selection_opt->ip6service_sel_len));
+		dbg("Service Selection string %s \n", str);
+	}
+
 
 	home_net_prefix_opt = mh_opt(&pbu->ip6mhbu_hdr, &mh_opts, IP6_MHOPT_HOME_NETWORK_PREFIX);
 	if (home_net_prefix_opt)
@@ -1356,6 +1549,9 @@ int mh_pbu_parse(msg_info_t * info, struct ip6_mh_binding_update *pbu, ssize_t l
 		info->mn_iid = in6addr_any;
 		memcpy(&info->mn_iid.s6_addr32[2], &mobile_node_link_layer_identifier_opt->ip6mnllid_lli, sizeof(ip6mnid_t));
 		dbg("Mobile Node Link-layer Identifier Option: %x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(&info->mn_iid));
+		info->mn_hw_address= in6addr_any;
+		memcpy(&info->mn_hw_address, &info->mn_iid, sizeof(info->mn_iid));
+		dbg("hw address %x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(&info->mn_hw_address));
 	}
 
 	time_stamp_opt = mh_opt(&pbu->ip6mhbu_hdr, &mh_opts, IP6_MHOPT_TIME_STAMP);
@@ -1419,6 +1615,9 @@ int mh_pba_parse(msg_info_t * info, struct ip6_mh_binding_ack *pba, ssize_t len,
 	ip_mh_opt_v4_home_addr_reply_option_t            *v4_home_addr_reply_opt;
 	ip_mh_opt_v4_dmnp_prefix_option_t                 *dmnp_prefix_opt;
 	ip_mh_opt_v4_default_router_addr_option_t         *default_router_addr_opt;
+	ip6_mh_opt_service_selection_t                    *service_selection_opt;
+
+	char str[PMIP_MAX_IDENTIFIER_STRING_LEN] = {0};
 
 	bzero(&mh_opts, sizeof(mh_opts));
 	info->src = *in_addrs->src;
@@ -1437,8 +1636,15 @@ int mh_pba_parse(msg_info_t * info, struct ip6_mh_binding_ack *pba, ssize_t len,
 	if (mobile_node_identifier_opt) {
 		//copy
 		info->mn_hw_address= in6addr_any;
-		mac_to_ipv6((uint8_t *)mobile_node_identifier_opt->ip6mnid_id.mac_addr, &info->mn_hw_address);
-		dbg("Mobile Node Identifier Option (mac): %x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(&info->mn_hw_address));
+		memcpy(str, mobile_node_identifier_opt->ip6mnid_identifier, (mobile_node_identifier_opt->ip6mnid_len -1));
+		dbg("Mobile Node Identifier Option %s \n", str);
+	}
+
+	service_selection_opt = mh_opt(&pba->ip6mhba_hdr, &mh_opts, IP6_MHOPT_SERVICE_SELECTION);
+	if (service_selection_opt) {
+		bzero(str, sizeof(str));
+		memcpy(str, service_selection_opt->identifier, (service_selection_opt->ip6service_sel_len));
+		dbg("Service Selection string %s \n", str);
 	}
 
 	home_net_prefix_opt = mh_opt(&pba->ip6mhba_hdr, &mh_opts, IP6_MHOPT_HOME_NETWORK_PREFIX);
@@ -1453,6 +1659,9 @@ int mh_pba_parse(msg_info_t * info, struct ip6_mh_binding_ack *pba, ssize_t len,
 		info->mn_iid = in6addr_any;
 		memcpy(&info->mn_iid.s6_addr32[2], &mobile_node_link_layer_identifier_opt->ip6mnllid_lli, sizeof(ip6mnid_t));
 		dbg("Mobile Node Link-layer Identifier Option: %x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(&info->mn_iid));
+		info->mn_hw_address= in6addr_any;
+		memcpy(&info->mn_hw_address, &info->mn_iid, sizeof(info->mn_iid));
+		dbg("hw address %x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(&info->mn_hw_address));
 	}
 
 	time_stamp_opt = mh_opt(&pba->ip6mhba_hdr, &mh_opts, IP6_MHOPT_TIME_STAMP);
@@ -1505,6 +1714,12 @@ int mh_pba_parse(msg_info_t * info, struct ip6_mh_binding_ack *pba, ssize_t len,
 		info->v4_home_prefixlen = ((v4_home_addr_reply_opt->plen) >> 2);
 		dbg("== extrated prefix lenght=%d==\n", info->v4_home_prefixlen);
 		info->v4_home_addr_reply_status  =v4_home_addr_reply_opt->status;
+	}
+	else
+	{
+		memset(&info->mn_hw_address, 0x0, sizeof(struct in6_addr));
+		pmip_cache_iterate_ext(pmip_cache_get_mac_from_iid, (void*)&info->mn_iid, (void *)&info->mn_hw_address);
+		dbg("pba got MAC address as: %x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(&info->mn_hw_address));
 	}
 
 	dmnp_prefix_opt = mh_opt(&pba->ip6mhba_hdr, &mh_opts, IPV4_DMNP_PREFIX_OPTION);
@@ -1583,7 +1798,7 @@ int icmp_na_parse(msg_info_t * info, struct nd_neighbor_advert *na, const struct
 	return 0;
 }
 
-int pmipv4_mh_send(const struct in_addr_bundle *addrs, const struct iovec *mh_vec, int iovlen, int oif)
+int pmipv4_mh_send(const struct in_addr_bundle *addrs, const struct iovec *mh_vec, int iovlen, int oif, int is_v4_pmip_mode)
 {
 	struct sockaddr_in daddr;
 	struct iovec iov[2 * (IP6_MHOPT_MAX + 1)];
@@ -1594,8 +1809,12 @@ int pmipv4_mh_send(const struct in_addr_bundle *addrs, const struct iovec *mh_ve
 	int ret = 0, on = 1;
 	struct ip6_mh *mh;
 	int iov_count;
+	int sock = -1;
+	int send_v6_to_pmip_port = 0;
 
-	iov_count = mh_try_pad(mh_vec, iov, iovlen);
+	memset((void*)iov , 0, (2 * (IP6_MHOPT_MAX + 1))*sizeof(struct iovec));
+
+	iov_count = mh_try_pad(mh_vec, &iov[0], iovlen);
 
 	mh = (struct ip6_mh *) iov[0].iov_base;
 	mh->ip6mh_hdrlen = (mh_length(iov, iov_count) >> 3) - 1;
@@ -1609,15 +1828,30 @@ int pmipv4_mh_send(const struct in_addr_bundle *addrs, const struct iovec *mh_ve
 	daddr.sin_family = AF_INET;
 	daddr.sin_addr = *(addrs->dst);
 	//inet_aton("10.242.28.141",&daddr.sin_addr);
+	//daddr.sin_port = htons(IPPROTO_MH);
+
+#ifdef SEND_V6_TO_PMIP_PORT
+	send_v6_to_pmip_port = 1;
+#endif
+
+	if ((is_v4_pmip_mode == 0) && (send_v6_to_pmip_port == 0))
+	{
 	daddr.sin_port = htons(IPPROTO_MH);
+		sock = mhv4_sock.ip_sock_fd;
+	}
+	else
+	{
+		daddr.sin_port = htons(PMIP_RESERVED_PORT);
+		sock = mhv4_sock.udp_sock_fd;
+	}
 
 	memset(&pinfo, 0, sizeof(pinfo));
 	pinfo.ipi_addr = *(addrs->src);
 	//inet_aton("10.252.134.239",&pinfo.ipi_addr);
 	pinfo.ipi_ifindex = oif;
 
-	dbg("sj:j packet info frommm %s \n",inet_ntoa(pinfo.ipi_addr));
-	dbg("sj: index v4 tun= %d with 0 prefix\n",oif);
+	dbg("packet info from %s \n",inet_ntoa(pinfo.ipi_addr));
+	dbg("index v4 tun= %d with 0 prefix\n",oif);
 
 	cmsglen = CMSG_SPACE(sizeof(pinfo));
 	cmsg = malloc(cmsglen);
@@ -1642,21 +1876,22 @@ int pmipv4_mh_send(const struct in_addr_bundle *addrs, const struct iovec *mh_ve
 	memcpy(CMSG_DATA(cmsg), &pinfo, sizeof(pinfo));
 
 	pthread_mutex_lock(&mhv4_sock.send_mutex);
-	setsockopt(mhv4_sock.fd, IPPROTO_IP, IP_PKTINFO, &on, sizeof(int));
-	dbg("sj: Set socket option IP_PKTINFO packet lenght %d\n",msg.msg_iovlen);
-	ret = sendmsg(mhv4_sock.fd, &msg, 0);
+	setsockopt(sock, IPPROTO_IP, IP_PKTINFO, &on, sizeof(int));
+	dbg("Set socket option IP_PKTINFO packet lenght %d\n",msg.msg_iovlen);
+	ret = sendmsg(sock, &msg, 0);
 	if (ret < 0) {
-		dbg("sendmsg: %s\n", strerror(errno));
+		dbg("sendmsg:failed Error number %d Error Message '%s'\n", errno, strerror(errno));
 	}
+	else
+		dbg("MH is sent OK....\n");
 	pthread_mutex_unlock(&mhv4_sock.send_mutex);
 	free(msg.msg_control);
-	dbg("MH is sent....\n");
 	return ret;
 }
 
 
 //---------------------------------------------------------------------------------------------------------------------
-int pmip_mh_send(const struct in6_addr_bundle *addrs, const struct iovec *mh_vec, int iovlen, int oif)
+int pmip_mh_send(const struct in6_addr_bundle *addrs, const struct iovec *mh_vec, int iovlen, int oif, int is_v4_pmip_mode)
 {
 	struct sockaddr_in6 daddr;
 	struct iovec iov[2 * (IP6_MHOPT_MAX + 1)];
@@ -1667,6 +1902,8 @@ int pmip_mh_send(const struct in6_addr_bundle *addrs, const struct iovec *mh_vec
 	int ret = 0, on = 1;
 	struct ip6_mh *mh;
 	int iov_count;
+	int sock = -1;
+	int send_v6_to_pmip_port = 0;
 
 	iov_count = mh_try_pad(mh_vec, iov, iovlen);
 
@@ -1677,7 +1914,21 @@ int pmip_mh_send(const struct in6_addr_bundle *addrs, const struct iovec *mh_vec
 	memset(&daddr, 0, sizeof(struct sockaddr_in6));
 	daddr.sin6_family = AF_INET6;
 	daddr.sin6_addr = *addrs->dst;
+
+#ifdef SEND_V6_TO_PMIP_PORT
+	send_v6_to_pmip_port = 1;
+#endif
+
+	if ((is_v4_pmip_mode == 0) && (send_v6_to_pmip_port == 0))
+	{
 	daddr.sin6_port = htons(IPPROTO_MH);
+		sock = mh_sock.ip_sock_fd;
+	}
+	else
+	{
+		daddr.sin6_port = htons(PMIP_RESERVED_PORT);
+		sock = mh_sock.udp_sock_fd;
+	}
 
 	memset(&pinfo, 0, sizeof(pinfo));
 	pinfo.ipi6_addr = *addrs->src;
@@ -1706,8 +1957,8 @@ int pmip_mh_send(const struct in6_addr_bundle *addrs, const struct iovec *mh_vec
 	memcpy(CMSG_DATA(cmsg), &pinfo, sizeof(pinfo));
 
 	pthread_mutex_lock(&mh_sock.send_mutex);
-	setsockopt(mh_sock.fd, IPPROTO_IPV6, IPV6_PKTINFO, &on, sizeof(int));
-	ret = sendmsg(mh_sock.fd, &msg, 0);
+	setsockopt(sock, IPPROTO_IPV6, IPV6_PKTINFO, &on, sizeof(int));
+	ret = sendmsg(sock, &msg, 0);
 	if (ret < 0) {
 		dbg("sendmsg: %s\n", strerror(errno));
 	}
@@ -1790,6 +2041,7 @@ int mh_send_pbu(void *addrs, pmip_entry_t * bce, struct timespec *lifetime, int 
 	int                           iov_count;
 	uint32_t                      time_sec = 0;
 	int ret = 0;
+	struct udphdr *udph = NULL;
 
 	memset((void*)mh_vec       , 0, (2 * (IP6_MHOPT_MAX + 1))*sizeof(struct iovec));
 	memset((void*)dummy_mh_vec , 0, (2 * (IP6_MHOPT_MAX + 1))*sizeof(struct iovec));
@@ -1819,6 +2071,12 @@ int mh_send_pbu(void *addrs, pmip_entry_t * bce, struct timespec *lifetime, int 
 	dbg("Create PBU options...\n");
 	dbg("pmip mode %d\n",conf.pmipv4_work_mode_type);
 	mh_create_opt_mobile_node_identifier(&mh_vec[iovlen++], p_flag, &mn_hardware_address);
+		
+	if (conf.is_valid_service_id == 1)
+	{
+	mh_create_opt_service_selection(&mh_vec[iovlen++]);
+	}
+	mh_create_opt_vendor_specific_option(&mh_vec[iovlen++]);
 	if (is_v4_pmip_mode == 1) {
 		dbg("mh_send_pbu is_pmipv4 true\n");
 		dbg("adding home addr option\n");
@@ -1827,6 +2085,7 @@ int mh_send_pbu(void *addrs, pmip_entry_t * bce, struct timespec *lifetime, int 
 			dbg("Secondary case. Since DMNP is Not Verified adding DMNP Prefix\n");
 			mh_create_opt_v4_dmnp_option(&mh_vec[iovlen++], &conf.PMIPV4SecRouterDMNPPrefix, &conf.PMIPV4SecRouterdmnpPrefixLen);
 		}
+		mh_create_opt_v4_default_router_opt(&mh_vec[iovlen++]);
 	}
 	if (!is_v4_pmip_mode)
 	{
@@ -1855,15 +2114,16 @@ int mh_send_pbu(void *addrs, pmip_entry_t * bce, struct timespec *lifetime, int 
 	//calculate the length of the message.
 	pbu->ip6mhbu_hdr.ip6mh_hdrlen = mh_length(dummy_mh_vec, iov_count);
 	dbg("Send PBU with life time...%d\n",pbu->ip6mhbu_lifetime );
+	dbg("Send PBU header length...%d, ioc count %d\n",pbu->ip6mhbu_hdr.ip6mh_hdrlen , iov_count);
 
 	dbg("Send PBU....\n");
 	if((!is_v4_pmip_mode && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01) ||
 			((is_v4_pmip_mode == 1 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)))
-		pmip_mh_send((struct in6_addr_bundle *)addrs, dummy_mh_vec, iov_count, oif);
+		pmip_mh_send((struct in6_addr_bundle *)addrs, dummy_mh_vec, iov_count, oif, is_v4_pmip_mode);
 
 	if  ((!is_v4_pmip_mode && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01) ||
 			(is_v4_pmip_mode == 1 && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01))
-		pmipv4_mh_send((struct in_addr_bundle *)addrs, dummy_mh_vec, iov_count, oif);
+		pmipv4_mh_send((struct in_addr_bundle *)addrs, dummy_mh_vec, iov_count, oif, is_v4_pmip_mode);
 
 	dbg("Copy PBU message into TEMP PMIP entry iovec....\n");
 	//copy the PBU message into the mh_vector for the entry for future retransmissions.
@@ -1932,10 +2192,10 @@ int mh_send_pba(void *addrs, pmip_entry_t * bce, struct timespec *lifetime, int 
 	dbg("Send PBA...\n");
 	//if v6 tunnel
 	if(conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
-		pmip_mh_send((struct in6_addr_bundle *)addrs, dummy_mh_vec, iov_count, oif);
+		pmip_mh_send((struct in6_addr_bundle *)addrs, dummy_mh_vec, iov_count, oif, is_v4_lma_mode);
 	//if v4 tunnel
 	if  (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
-		pmipv4_mh_send((struct in_addr_bundle *)addrs, dummy_mh_vec, iov_count, oif);
+		pmipv4_mh_send((struct in_addr_bundle *)addrs, dummy_mh_vec, iov_count, oif, is_v4_lma_mode);
 
 	free_iov_data(dummy_mh_vec, iov_count);
 	return 0;

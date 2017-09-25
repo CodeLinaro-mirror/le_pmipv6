@@ -443,13 +443,10 @@ ssize_t icmp6_recv(int sockfd, unsigned char *msg, size_t msglen,
 		}
 	}
 
-	//dbg("sj:sj: checking router solicitation len =%d\n",len);
-
 	ih = (struct icmp6_hdr *) msg;
-	//dbg("sj:sj: tye =%d, host order=%d\n",ih->icmp6_type,ntohs(ih->icmp6_type));
 	if (ih->icmp6_type == ND_ROUTER_SOLICIT)
 	{
-		dbg("sjj: Router solicitation received\n");
+		dbg("Router solicitation received\n");
 		is_rs = 1;
 		opt_hdr = (struct nd_opt_hdr *) (msg + sizeof(struct nd_router_solicit));
 		payload_len = len;
@@ -457,7 +454,6 @@ ssize_t icmp6_recv(int sockfd, unsigned char *msg, size_t msglen,
 		while(opt_hdr != NULL && opt_hdr->nd_opt_len != 0 && payload_len > 0)
 		{
 			packet_size += (opt_hdr->nd_opt_len * 8);
-			//dbg("sjj: in while loop, rs h len=%d,, type %d\n",sizeof(struct nd_router_solicit),opt_hdr->nd_opt_type);
 
 			if (opt_hdr->nd_opt_type == ND_OPT_SOURCE_LINKADDR)
 			{
@@ -475,7 +471,7 @@ ssize_t icmp6_recv(int sockfd, unsigned char *msg, size_t msglen,
 	}
 	if (is_rs && (is_rs_mac_successfully_parsed != 1))
 	{
-		dbg("sj: Router solicitation Do Not have Sender MAc option.Ignore RS\n");
+		dbg("Router solicitation Do Not have Sender MAc option.Ignore RS\n");
 		return -1;
 	}
 	return len;
@@ -648,7 +644,7 @@ static void pmip_mag_dhcpv6_info_hand(unsigned char *buf, size_t msglen,
 {
 	int ret;
 	char command[100];
-	dbg("sj: in pmip_mag_dhcpv6_info_hand\n");
+	dbg("in pmip_mag_dhcpv6_info_hand\n");
 	pmip_entry_t *bce;
 	struct in6_addr hw_address;
 	char fname[IFNAMSIZ]={0};
@@ -663,14 +659,14 @@ static void pmip_mag_dhcpv6_info_hand(unsigned char *buf, size_t msglen,
 		type = pmip_cache_exists(&conf.OurAddress, &hw_address);
 		if (type == BCE_NO_ENTRY)
 		{
-			dbg("sj:ipv6 entry not created return\n");
+			dbg("ipv6 entry not created return\n");
 			return;
 		}
 		bce = pmip_cache_get(&conf.OurAddress, &hw_address);
 		pmipcache_release_entry(bce);
 		if (bce == NULL)
 		{
-			dbg("sj:ipv6 bce entry not found return\n");
+			dbg("ipv6 bce entry not found return\n");
 			return;
 		}
 		if (conf.pmip_tunnel_mode== IP_FAMILY_V4_V01)
@@ -678,12 +674,12 @@ static void pmip_mag_dhcpv6_info_hand(unsigned char *buf, size_t msglen,
 			ret = tunnelv4_getname(bce->tunnel_v4,fname);
 			if (ret == 0)
 			{
-				dbg("sj:ipv6 Get Tunnel name failed for v4 tunnel do not forward packet\n");
+				dbg("ipv6 Get Tunnel name failed for v4 tunnel do not forward packet\n");
 				return;
 			}
 			else
 			{
-				dbg("sj:ipv6 got tunnel name = %s\n",fname);
+				dbg("ipv6 got tunnel name = %s\n",fname);
 				//forward packet to tunnel interface from ip header
 				forward_msg_to_tunnel((buf + sizeof(struct ether_header)),(msglen-sizeof(struct ether_header)),fname);
 			}
@@ -693,12 +689,12 @@ static void pmip_mag_dhcpv6_info_hand(unsigned char *buf, size_t msglen,
 			ret = tunnel_getname(bce->tunnel,fname);
 			if (ret == 0)
 			{
-				dbg("sj:ipv6 Get Tunnel name failed for v6 tunnel do not forward packet\n");
+				dbg("ipv6 Get Tunnel name failed for v6 tunnel do not forward packet\n");
 				return;
 			}
 			else
 			{
-				dbg("sj:ipv6 got tunnel name = %s\n",fname);
+				dbg("ipv6 got tunnel name = %s\n",fname);
 				//forward packet to tunnel interface from ip header
 				forward_msg_to_tunnel((buf + sizeof(struct ether_header)),(msglen-sizeof(struct ether_header)),fname);
 			}
@@ -725,16 +721,16 @@ int create_sender_sock(int *sock, char *fname)
 	daddr.sll_protocol = htons(ETHERTYPE_IPV6);;
 	daddr.sll_ifindex = if_nametoindex(fname);
 	if (bind(*sock, (struct sockaddr*) &daddr, sizeof(daddr)) < 0) {
-		dbg("sj:ipv6 bind failed\n");
+		dbg("ipv6 bind failed\n");
 		close(*sock);
 	}
 
 	if (setsockopt(*sock, SOL_SOCKET, SO_BINDTODEVICE, fname, (socklen_t)strlen(fname)) < 0)
 	{
-		dbg("sj:ipv6  %s: Unable to bind socket to interface %s errnum=%d,msg=%s\n", __func__, fname,errno,strerror(errno));
+		dbg("ipv6  %s: Unable to bind socket to interface %s errnum=%d,msg=%s\n", __func__, fname,errno,strerror(errno));
 		return -1;
 	}
-	dbg("sj:ipv6 create sucess\n");
+	dbg("ipv6 create sucess\n");
 }
 
 int forward_msg_to_tunnel(unsigned char *buf,ssize_t len, char *fname)
@@ -748,15 +744,15 @@ int forward_msg_to_tunnel(unsigned char *buf,ssize_t len, char *fname)
 	int send_sock;
 	create_sender_sock(&send_sock, fname);
 	int bytes_sent;
-	dbg("sj:ipv6 Got len=%d\n",len);
+	dbg("ipv6 Got len=%d\n",len);
 	bytes_sent=write(send_sock,buf,len);
-	dbg("sj:ipv6 Sent %d bytes\n",bytes_sent);
+	dbg("ipv6 Sent %d bytes\n",bytes_sent);
 	if (bytes_sent < 0) {
-		dbg("sj:ipv6 write failed errnum=%d,msg=%s\n",errno,strerror(errno));
+		dbg("ipv6 write failed errnum=%d,msg=%s\n",errno,strerror(errno));
 	}
 	else
 	{
-		dbg("sj:ipv6 write ok to iface=%s except eth header=====\n",fname);
+		dbg("ipv6 write ok to iface=%s except eth header=====\n",fname);
 	}
 	close(send_sock);
 
@@ -780,29 +776,27 @@ int dhcpv6_info_recv(int sockfd, unsigned char *buf, size_t msglen,
 
 	ssize_t len;
 
-	//dbg ("sj: received on dhcpv6_info filter before receive from from\n");
 	len = recvfrom(sockfd, buf, msglen, 0, NULL, NULL);
 	eh = (struct ether_header *) buf;
 
-	//dbg("sj: after recv from\n");
 	eh = (struct ether_header *) buf;
 	//cheching packet type
 	if ((conf.pmip_mode_type == IP_FAMILY_V6_V01 || conf.pmip_mode_type == IP_FAMILY_V4V6_V01)
 			&& ntohs (eh->ether_type) == ETHERTYPE_IPV6)
 	{
-		dbg("sj:ip ipv6 packet\n");
+		dbg("ip ipv6 packet\n");
 		//stroing mac
 		memcpy(ether_shost,eh->ether_shost,PMIP_MAC_ADDR_LEN);
 		iph6 = (struct ip6hdr *) (buf + sizeof(struct ether_header));
 		udph = (struct udphdr *) (buf + sizeof(struct ipv6hdr) + sizeof(struct ether_header));
 		if (ntohs(udph->dest) == DHCP_SERVER_PORT_V6)
 		{
-			dbg ("sj:ipv6 Got multicast for port %d will send to tunnel\n", ntohs(udph->dest));
+			dbg ("ipv6 Got multicast for port %d will send to tunnel\n", ntohs(udph->dest));
 			return len;
 		}
 		else
 		{
-			//	dbg ("sj:ipv6 Invalid UDP packet received Not DHCPv6 packet\n");
+			//ipv6 Invalid UDP packet received Not DHCPv6 packet
 			return -1;
 		}
 	}
@@ -820,7 +814,7 @@ static void *dhcpv6_info_listen(void *arg)
 	ssize_t len;
 	int ret;
 
-	dbg("sj: dhcpv6_info_listen thread started\n");
+	dbg("dhcpv6_info_listen thread started\n");
 
 	while (1) {
 		pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
@@ -857,13 +851,13 @@ int dhcpv6_info_init(void)
 	/* Bind to bridge0 */
 	if (setsockopt(dhcpv6_info_sock.fd, SOL_SOCKET, SO_BINDTODEVICE, BRIDGE_IFACE, strlen(BRIDGE_IFACE) + 1) == -1)
 	{
-		dbg("sj: SO_BINDTODEVICE failed\n");
+		dbg("SO_BINDTODEVICE failed\n");
 		close(dhcpv6_info_sock.fd);
 		return -1;
 	}
 	else
 	{
-		dbg("sj: bind to bridge succesed\n");
+		dbg("bind to bridge succesed\n");
 	}
 
 	/* create muticast listener thread */

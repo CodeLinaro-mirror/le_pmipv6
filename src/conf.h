@@ -8,23 +8,28 @@
 #include "list.h"
 #include "pmgr.h"
 #define BASE4DEV "ip4gre1"
+#define PMIP_RESERVED_PORT 5436
+#define MAX_COMMAND_STRING_LEN 500
+#define PMIP_INVALID_ID_STRING "-1"
 
 
 
 typedef enum {
-	IP_FAMILY_ENUM_MIN_ENUM_VAL_V01 = -2147483647, /**< To force a 32 bit signed enum.  Do not change or use*/
 	IP_FAMILY_V4_V01 = 0x04, /**<  IPv4 version  */
 	IP_FAMILY_V6_V01 = 0x06, /**<  IPv6 version  */
-	IP_FAMILY_V4V6_V01 = 0x0A, /**<  Dual mode version  */
-	IP_FAMILY_ENUM_MAX_ENUM_VAL_V01 = 2147483647 /**< To force a 32 bit signed enum.  Do not change or use*/
+	IP_FAMILY_V4V6_V01 = 0x0A /**<  Dual mode version  */
 }ip_family_enum_v01;
 
 typedef enum {
-	PMIPV4_MODE_ENUM_MIN_ENUM_VAL_V01 = -2147483647, /**< To force a 32 bit signed enum.  Do not change or use*/
 	PMIPV4_MODE_CPE_V01 = 1, /**<  MIPV4 MODE is CPE  */
-	PMIPV4_MODE_SECONDARY_ROUTER_V01 = 2, /**<  PMIPV4 MODE is SECONDARY ROUTER  */
-	PMIPV4_MODE_ENUM_MAX_ENUM_VAL_V01 = 2147483647 /**< To force a 32 bit signed enum.  Do not change or use*/
+	PMIPV4_MODE_SECONDARY_ROUTER_V01 = 2 /**<  PMIPV4 MODE is SECONDARY ROUTER  */
 }pmipv4_mode_enum_v01;
+
+typedef enum {
+	MOBILE_NODE_IDENTIFIER_TYPE_MAC = 0,     /**<  MOBILE NODE IDENTIFIER TYPE MAC  */
+	MOBILE_NODE_IDENTIFIER_TYPE_STRING = 1   /**<  MOBILE NODE IDENTIFIER TYPE custom string  */
+}mobile_node_identifier_type_enum_v01;
+
 
 struct pending_pbu_seq_list {
 	struct list_head list;
@@ -51,6 +56,7 @@ struct mip6_config {
 	unsigned int    mip6_entity;
 	unsigned int    debug_level;
 	char *          debug_log_file;
+	mobile_node_identifier_type_enum_v01    mobile_node_identifier_type;
 	struct pmgr_cb  pmgr;
 	struct list_head net_ifaces;
 	struct list_head bind_acl;
@@ -125,6 +131,10 @@ struct mip6_config {
 	struct in6_addr Mag3AddressEgress;          // egress address of MAG1.
 	char*           MagDeviceIngress;           // ingress device.
 	char*           MagDeviceEgress;            // egress device.
+	char*           ServiceSelectionIdentifier; //Service selection identifier
+	int             is_valid_service_id;        //check for valid service identifier string
+	char*           MnIdString;                 // Mobile node identifier string
+	uint16_t        PmipMaxLogFileSize;         //Max pmip log file size
 	struct in6_addr OurAddress;
 	struct in6_addr HomeNetworkPrefix;          // home network address common for domain!
 	struct timespec PBULifeTime;                // Life time of Proxy Binding Update.

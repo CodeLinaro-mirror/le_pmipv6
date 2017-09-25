@@ -39,6 +39,7 @@
 //-----------------------------------------------------------------------------
 #include "pmip_cache.h"
 #include "conf.h"
+#define MAC_ADDR_NUM_CHARS 18
 
 //-GLOBAL VARIABLES----------------------------------------------------------------------------
 /*! \var int g_mag_sequence_number
@@ -202,7 +203,7 @@ protected_pmip_msgs(int icmp_rs_parse(msg_info_t * info, struct nd_router_solici
 * \return   Zero.
 */
 protected_pmip_msgs(int icmp_na_parse(msg_info_t * info, struct nd_neighbor_advert *na, const struct in6_addr *saddr, const struct in6_addr *daddr, int iif, int hoplimit);)
-/*! \fn int pmip_mh_send(const struct in6_addr_bundle *, const struct iovec *, int , int )
+/*! \fn int pmip_mh_send(const struct in6_addr_bundle *, const struct iovec *, int , int , int)
 * \brief Send MH message.
 * \param[in]  addrs  Source and destination address of the message.
 * \param[in]  mh_vec  Storage of the message.
@@ -210,7 +211,7 @@ protected_pmip_msgs(int icmp_na_parse(msg_info_t * info, struct nd_neighbor_adve
 * \param[in]  oif  Outgoing interface identifier.
 * \return   Zero if success, negative value otherwise.
 */
-protected_pmip_msgs(int pmip_mh_send(const struct in6_addr_bundle *addrs, const struct iovec *mh_vec, int iovlen, int oif);)
+protected_pmip_msgs(int pmip_mh_send(const struct in6_addr_bundle *addrs, const struct iovec *mh_vec, int iovlen, int oif, int is_v4_pmip_mode);)
 /*! \fn int mh_send_pbu(const struct in6_addr_bundle *, pmip_entry_t *, struct timespec *lifetime, int oif, int is_v4_pmip_mode)
 * \brief Send PBU message.
 * \param[in]  addrs  Source and destination address of the message.

@@ -177,6 +177,7 @@ PrimaryV6Dns					{ return PRIMARYV6DNS; }
 SecondaryV6Dns					{ return SECONDARYV6DNS; }
 PMIPV4SecRouterDMNPPrefix					{ return PMIPV4SECROUTERDMNPPREFIX; }
 PMIPV4SecRouterdmnpPrefixLen					{ return PMIPV4SECROUTERDMNPPREFIXLEN; }
+PmipMaxLogFileSize								{ return PMIPMAXLOGFILESIZE; }
 LmaPmipNetworkDevice                            { return LMAPMIPNETWORKDEVICE; }
 LmaCoreNetworkAddress                           { return LMACORENETWORKADDRESS; }
 LmaCoreNetworkDevice                            { return LMACORENETWORKDEVICE; }
@@ -192,6 +193,8 @@ Mag3AddressIngress				{ return MAG3ADDRESSINGRESS; }
 Mag3AddressEgress				{ return MAG3ADDRESSEGRESS; }
 MagDeviceIngress				{ return MAGDEVICEINGRESS; }
 MagDeviceEgress					{ return MAGDEVICEEGRESS; }
+ServiceSelectionIdentifier		{ return SERVICESELECTIONIDENTIFIER; }
+MnIdString				{ return MNIDSTRING; }
 OurAddress					{ return OURADDRESS; }
 HomeNetworkPrefix				{ return HOMENETWORKPREFIX; }
 PBULifeTime					{ return PBULIFETIME; }

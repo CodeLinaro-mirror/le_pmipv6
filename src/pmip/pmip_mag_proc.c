@@ -807,7 +807,7 @@ int mag_pmip_md(msg_info_t * info, pmip_entry_t * bce, int is_v4_pmip_mode)
 			bce->mn_serv_lma_v4_addr = conf.LmaV4Address;
 		}
 		bce->seqno_out = 0;
-		bce->PBU_flags = IP6_MH_BU_ACK | IP6_MH_BU_PR;
+		bce->PBU_flags = IP6_MH_BU_ACK | IP6_MH_BU_PR | IP6_MH_BU_HOME;
 		bce->link = info->iif;
 		struct in6_addr *link_local = link_local_addr(&bce->mn_suffix);
 		bce->mn_link_local_addr = *link_local;  // link local address of MN

@@ -84,8 +84,8 @@
 #endif
 
 
-struct sock mh_sock;
-struct sock mhv4_sock;
+struct sock_def mh_sock;
+struct sock_def mhv4_sock;
 
 
 
@@ -167,6 +167,10 @@ static void *mh_listen(void *arg)
 	while (1) {
 		pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
 		len = mh_recv(msg, sizeof(msg), &addr, &pktinfo, &haoa, &rta);
+		if (len == -1)
+		{
+			continue;
+		}
 		/* check if socket has closed */
 		if (len == -EBADF)
 			break;
@@ -198,34 +202,93 @@ static void *mh_listen(void *arg)
 	pthread_exit(NULL);
 }
 
+int sock_init(int sock)
+{
+	int val;
+
+	val = 1;
+	if (setsockopt(sock, IPPROTO_IPV6, IPV6_RECVPKTINFO,
+				&val, sizeof(val)) < 0)
+	{
+		dbg("sock_init: IPPROTO_IPV6 IPV6_RECVPKTINFO failed. Error %d, msg=%s\n", errno, strerror(errno));
+		return -1;
+	}
+	if (setsockopt(sock, IPPROTO_IPV6, IPV6_RECVDSTOPTS,
+				&val, sizeof(val)) < 0)
+	{
+
+		dbg("sock_init: IPPROTO_IPV6 IPV6_RECVDSTOPTS failed. Error %d, msg=%s\n", errno, strerror(errno));
+		return -1;
+	}
+	if (setsockopt(sock, IPPROTO_IPV6, IPV6_RECVRTHDR,
+				&val, sizeof(val)) < 0)
+	{
+
+		dbg("sock_init: IPPROTO_IPV6 IPV6_RECVRTHDR failed. Error %d, msg=%s\n", errno, strerror(errno));
+		return -1;
+	}
+
+
+	return 0;
+}
+
 int mh_init(void)
 {
 	pthread_mutexattr_t mattrs;
-	int val;
+	struct sockaddr_in6 server;
+	int val = 0;
 
-	mh_sock.fd = socket(AF_INET6, SOCK_RAW, IPPROTO_MH);
-	if (mh_sock.fd < 0) {
+	memset(&server, 0, sizeof(struct sockaddr_in6));
+
+	mh_sock.ip_sock_fd = socket(AF_INET6, SOCK_RAW, IPPROTO_MH);
+	if (mh_sock.ip_sock_fd < 0) {
 		syslog(LOG_ERR,
-				"Unable to open MH socket! "
+				"Unable to open IP MH socket! "
 				"Do you have root permissions?");
-		return mh_sock.fd;
+		return mh_sock.ip_sock_fd;
 	}
-	val = 1;
-	if (setsockopt(mh_sock.fd, IPPROTO_IPV6, IPV6_RECVPKTINFO,
-				&val, sizeof(val)) < 0)
-		return -1;
-	if (setsockopt(mh_sock.fd, IPPROTO_IPV6, IPV6_RECVDSTOPTS,
-				&val, sizeof(val)) < 0)
-		return -1;
-	if (setsockopt(mh_sock.fd, IPPROTO_IPV6, IPV6_RECVRTHDR,
-				&val, sizeof(val)) < 0)
-		return -1;
 
 	val = 4;
-	if (setsockopt(mh_sock.fd, IPPROTO_RAW, IPV6_CHECKSUM,
+	if (setsockopt(mh_sock.ip_sock_fd, IPPROTO_RAW, IPV6_CHECKSUM,
 				&val, sizeof(val)) < 0)
+	{
+		dbg("sock_init: IPPROTO_RAW IPV6_CHECKSUM failed. Error %d, msg=%s\n", errno, strerror(errno));
 		return -1;
+	}
 
+	mh_sock.udp_sock_fd = socket(AF_INET6, SOCK_DGRAM, 0);
+	if (mh_sock.udp_sock_fd < 0) {
+		syslog(LOG_ERR,
+				"Unable to open UDP MH socket! "
+				"Do you have root permissions?");
+		return mh_sock.udp_sock_fd;
+	}
+	if (conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
+	{
+		server.sin6_family = AF_INET6;
+		server.sin6_addr   = in6addr_any;
+		server.sin6_port = htons( PMIP_RESERVED_PORT );
+		//Bind
+		if( bind(mh_sock.udp_sock_fd,(struct sockaddr *)&server , sizeof(server)) < 0)
+		{
+			dbg("pmip: bind failed. Error %d, msg=%s\n", errno, strerror(errno));
+			system("echo 'pmip: bind failed' > /dev/kmsg");
+			return -1;
+		}
+		dbg("Bind done\n");
+	}
+
+	if (sock_init(mh_sock.ip_sock_fd) < 0)
+	{
+		dbg ("sock init failed for ip socket\n");
+		return -1;
+	}
+
+	if (sock_init(mh_sock.udp_sock_fd) < 0)
+	{
+		dbg ("sock init failed for udp socket\n");
+		return -1;
+	}
 	pthread_mutexattr_init(&mattrs);
 	pthread_mutexattr_settype(&mattrs, PTHREAD_MUTEX_FAST_NP);
 	if (pthread_mutex_init(&mh_sock.send_mutex, &mattrs) ||
@@ -278,13 +341,19 @@ static void *mhv4_listen(void *arg)
 	struct in_addr_bundle addrs;
 	ssize_t len;
 	struct mhv4_handler *h;
+	ssize_t offset = 0; //offset of mipv6 header in message
 
 	pthread_dbg("thread started");
 
 	while (1) {
 		pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
-		len = mhv4_recv(msg, sizeof(msg), &addr, &pktinfo);
-		len = len - sizeof(struct iphdr);
+		len = mhv4_recv(msg, sizeof(msg), &addr, &pktinfo, &offset);
+		if (len == -1)
+		{
+			//len is -1;
+			continue;
+		}
+		//len = len - (sizeof(struct iphdr) + sizeof(struct udphdr));
 		/* check if socket has closed */
 		if (len == -EBADF)
 			break;
@@ -294,7 +363,8 @@ static void *mhv4_listen(void *arg)
 		addrs.src = &addr.sin_addr;
 		addrs.dst = &pktinfo.ipi_addr;
 
-		mh = (struct ip6_mh *) (msg + sizeof(struct iphdr));
+		mh = (struct ip6_mh *) (msg + offset);
+		dbg ("mhv4_listen mipv6 packet type %d len =%d\n",mh->ip6mh_type, len);
 		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
 		pthread_rwlock_rdlock(&handlerv4_lock);
 		h = mhv4_handler_get(mh->ip6mh_type);
@@ -309,22 +379,66 @@ static void *mhv4_listen(void *arg)
 int mhv4_init(void)
 {
 	pthread_mutexattr_t mattrs;
-	int val;
+	int val = 1;
 	dbg(":Enter\n");
+	struct sockaddr_in server;
+	memset(&server, 0, sizeof(struct sockaddr_in));
 
-	mhv4_sock.fd = socket(AF_INET, SOCK_RAW, IPPROTO_MH);
-	if (mhv4_sock.fd < 0) {
+	mhv4_sock.ip_sock_fd = socket(AF_INET, SOCK_RAW, IPPROTO_MH);
+	if (mhv4_sock.ip_sock_fd< 0) {
 		syslog(LOG_ERR,
-				"Unable to open MH socket! "
+				"Unable to open MH IP socket! "
 				"Do you have root permissions?");
 		dbg("mhv4 init failed\n");
-		return mhv4_sock.fd;
+		return mhv4_sock.ip_sock_fd;
+	}
+
+	mhv4_sock.udp_sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (mhv4_sock.udp_sock_fd< 0) {
+		syslog(LOG_ERR,
+				"Unable to open MH UDP socket! "
+				"Do you have root permissions?");
+		dbg("mhv4 init failed\n");
+		return mhv4_sock.udp_sock_fd;
+	}
+
+	if (setsockopt(mhv4_sock.udp_sock_fd, SOL_SOCKET, SO_REUSEADDR, &val, sizeof val) == -1)
+	{
+		dbg("setsockopt failed for reuse socket\n");
+		return -1;
+	}
+
+	if (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
+	{
+		server.sin_family = AF_INET;
+		server.sin_addr.s_addr = INADDR_ANY;
+		server.sin_port = htons( PMIP_RESERVED_PORT );
+		//Bind
+		if( bind(mhv4_sock.udp_sock_fd,(struct sockaddr *)&server , sizeof(server)) < 0)
+		{
+			dbg("pmip: bind failed. Error %d, msg=%s===\n",errno, strerror(errno));
+			system("echo 'pmip: bind failed' > /dev/kmsg");
+			return -1;
+		}
+		dbg("Bind done\n");
 	}
 
 	val = 1;
-	if (setsockopt(mhv4_sock.fd, IPPROTO_IP, IP_PKTINFO,
+	if (setsockopt(mhv4_sock.udp_sock_fd, IPPROTO_IP, IP_PKTINFO,
 				&val, sizeof(val)) < 0)
+	{
+
+		dbg("pmip: udp_sock_fd  IP_PKTINFO failed. Error %d, msg=%s===\n",errno, strerror(errno));
 		return -1;
+	}
+
+	if (setsockopt(mhv4_sock.ip_sock_fd, IPPROTO_IP, IP_PKTINFO,
+				&val, sizeof(val)) < 0)
+	{
+		dbg("pmip: ip_sock_fd  IP_PKTINFO failed. Error %d, msg=%s===\n",errno, strerror(errno));
+		return -1;
+	}
+
 
 	pthread_mutexattr_init(&mattrs);
 	pthread_mutexattr_settype(&mattrs, PTHREAD_MUTEX_FAST_NP);
@@ -801,9 +915,9 @@ int mh_send(const struct in6_addr_bundle *addrs, const struct iovec *mh_vec,
 	}
 
 	pthread_mutex_lock(&mh_sock.send_mutex);
-	setsockopt(mh_sock.fd, IPPROTO_IPV6, IPV6_PKTINFO,
+	setsockopt(mh_sock.ip_sock_fd, IPPROTO_IPV6, IPV6_PKTINFO,
 			&on, sizeof(int));
-	ret = sendmsg(mh_sock.fd, &msg, 0);
+	ret = sendmsg(mh_sock.ip_sock_fd, &msg, 0);
 	if (ret < 0)
 		dbg("sendmsg: %s\n", strerror(errno));
 
@@ -925,85 +1039,128 @@ ssize_t mh_recv(unsigned char *msg, size_t msglen,
 	struct iovec iov;
 	static unsigned char chdr[CMSG_BUF_LEN];
 	void *databufp = NULL;
-	int sockfd = mh_sock.fd;
+	int sockfd = mh_sock.ip_sock_fd;
 	socklen_t hao_len;
 	ssize_t len;
+	fd_set readfds;
+	FD_ZERO(&readfds);
+	int max_fd;
+	int ret = -1;
+	int i= 0 ;
 
-	iov.iov_len = msglen;
-	iov.iov_base = (unsigned char *)msg;
+	// add our descriptors to the set
+	FD_SET(mh_sock.ip_sock_fd, &readfds);
+	FD_SET(mh_sock.udp_sock_fd, &readfds);
+	if (mh_sock.ip_sock_fd > mh_sock.udp_sock_fd)
+		max_fd = mh_sock.ip_sock_fd;
+	else
+		max_fd = mh_sock.udp_sock_fd;
 
-	mhdr.msg_name = (void *)addr;
-	mhdr.msg_namelen = sizeof(struct sockaddr_in6);
-	mhdr.msg_iov = &iov;
-	mhdr.msg_iovlen = 1;
-	mhdr.msg_control = (void *)&chdr;
-	mhdr.msg_controllen = CMSG_BUF_LEN;
-
-	if ((len = recvmsg(sockfd, &mhdr, 0)) < 0)
+	ret = select(max_fd+1, &readfds, NULL, NULL, NULL);
+	if (ret < 0)
+	{
+		dbg("Error in select, errno:%d\n", errno, 0, 0);
 		return -errno;
+	}
 
-	memset(haoaddr, 0, sizeof(*haoaddr));
-	memset(rtaddr, 0, sizeof(*rtaddr));
+	for (i=0; ( i <= max_fd ); i++)
+	{
+		if (FD_ISSET(i, &readfds))
+		{
+			if ( (i != mh_sock.ip_sock_fd) && (i != mh_sock.udp_sock_fd) )
+			{
+				dbg("invalid socket on select\n",0,0,0);
+				return -errno;
+			}
+			else if ((i == mh_sock.ip_sock_fd) || (i == mh_sock.udp_sock_fd))
+			{
+				if (i== mh_sock.ip_sock_fd)
+					dbg("got packet on ip socket\n");
+				else
+					dbg("got packet on udp socket\n");
 
-	for (cmsg = CMSG_FIRSTHDR(&mhdr); cmsg;
-			cmsg = CMSG_NXTHDR(&mhdr, cmsg)) {
-		int ret = 0;
+				iov.iov_len = msglen;
+				iov.iov_base = (unsigned char *)msg;
 
-		if (cmsg->cmsg_level != IPPROTO_IPV6)
-			continue;
-		switch (cmsg->cmsg_type) {
-			case IPV6_PKTINFO:
-				memcpy(pkt_info, CMSG_DATA(cmsg), sizeof(*pkt_info));
-				break;
-			case IPV6_DSTOPTS:
-				ret = inet6_opt_find(CMSG_DATA(cmsg), cmsg->cmsg_len,
-						0, IP6OPT_HOME_ADDRESS,
-						&hao_len, &databufp);
-				if (ret >= 0 && databufp != NULL &&
-						hao_len == sizeof(struct in6_addr)) {
-					*haoaddr = *(struct in6_addr *) databufp;
+				mhdr.msg_name = (void *)addr;
+				mhdr.msg_namelen = sizeof(struct sockaddr_in6);
+				mhdr.msg_iov = &iov;
+				mhdr.msg_iovlen = 1;
+				mhdr.msg_control = (void *)&chdr;
+				mhdr.msg_controllen = CMSG_BUF_LEN;
+
+				if ((len = recvmsg(i, &mhdr, 0)) < 0)
+					return -errno;
+
+				memset(haoaddr, 0, sizeof(*haoaddr));
+				memset(rtaddr, 0, sizeof(*rtaddr));
+
+				for (cmsg = CMSG_FIRSTHDR(&mhdr); cmsg;
+						cmsg = CMSG_NXTHDR(&mhdr, cmsg)) {
+					int ret = 0;
+
+					if (cmsg->cmsg_level != IPPROTO_IPV6)
+						continue;
+					switch (cmsg->cmsg_type) {
+						case IPV6_PKTINFO:
+							memcpy(pkt_info, CMSG_DATA(cmsg), sizeof(*pkt_info));
+							break;
+						case IPV6_DSTOPTS:
+							ret = inet6_opt_find(CMSG_DATA(cmsg), cmsg->cmsg_len,
+									0, IP6OPT_HOME_ADDRESS,
+									&hao_len, &databufp);
+							if (ret >= 0 && databufp != NULL &&
+									hao_len == sizeof(struct in6_addr)) {
+								*haoaddr = *(struct in6_addr *) databufp;
+							}
+							break;
+						case IPV6_RTHDR:
+							if (inet6_rth_gettype(CMSG_DATA(cmsg)) ==
+									IPV6_RTHDR_TYPE_2) {
+								struct in6_addr *seg = NULL;
+								/* Kernel already processed routing
+								 * header type 2 for us */
+								seg = inet6_rth_getaddr(CMSG_DATA(cmsg), 0);
+								if (!seg)
+									MDBG("Invalid rth\n");
+								else
+									*rtaddr = *seg;
+							}
+							break;
+					}
 				}
-				break;
-			case IPV6_RTHDR:
-				if (inet6_rth_gettype(CMSG_DATA(cmsg)) ==
-						IPV6_RTHDR_TYPE_2) {
-					struct in6_addr *seg = NULL;
-					/* Kernel already processed routing
-					 * header type 2 for us */
-					seg = inet6_rth_getaddr(CMSG_DATA(cmsg), 0);
-					if (!seg)
-						MDBG("Invalid rth\n");
+				mh = (struct ip6_mh *)msg;
+
+				if (mh->ip6mh_type > IP6_MH_TYPE_MAX) {
+					struct in6_addr *src, *dst, *hoa;
+					if (!IN6_IS_ADDR_UNSPECIFIED(rtaddr))
+						src = rtaddr;
 					else
-						*rtaddr = *seg;
+						src = &pkt_info->ipi6_addr;
+
+					if (!IN6_IS_ADDR_UNSPECIFIED(haoaddr)) {
+						hoa = &addr->sin6_addr;
+						dst = haoaddr;
+					} else {
+						hoa = NULL;
+						dst = &addr->sin6_addr;
+					}
+					mh_send_be(dst, hoa, src, IP6_MH_BES_UNKNOWN_MH,
+							pkt_info->ipi6_ifindex);
+					return -EINVAL;
 				}
-				break;
+
+				/* No need to perform any other validity checks, since kernel
+				 * does this for us. */
+
+				return len;
+
+			}
 		}
 	}
-	mh = (struct ip6_mh *)msg;
 
-	if (mh->ip6mh_type > IP6_MH_TYPE_MAX) {
-		struct in6_addr *src, *dst, *hoa;
-		if (!IN6_IS_ADDR_UNSPECIFIED(rtaddr))
-			src = rtaddr;
-		else
-			src = &pkt_info->ipi6_addr;
+	return -1;
 
-		if (!IN6_IS_ADDR_UNSPECIFIED(haoaddr)) {
-			hoa = &addr->sin6_addr;
-			dst = haoaddr;
-		} else {
-			hoa = NULL;
-			dst = &addr->sin6_addr;
-		}
-		mh_send_be(dst, hoa, src, IP6_MH_BES_UNKNOWN_MH,
-				pkt_info->ipi6_ifindex);
-		return -EINVAL;
-	}
-
-	/* No need to perform any other validity checks, since kernel
-	 * does this for us. */
-
-	return len;
 }
 
 /**
@@ -1021,7 +1178,7 @@ ssize_t mh_recv(unsigned char *msg, size_t msglen,
  * failure.
  **/
 ssize_t mhv4_recv(unsigned char *msg, size_t msglen,
-		struct sockaddr_in *addr, struct in_pktinfo *pkt_info)
+		struct sockaddr_in *addr, struct in_pktinfo *pkt_info,size_t *offset)
 {
 	struct ip6_mh *mh;
 	struct msghdr mhdr;
@@ -1029,38 +1186,108 @@ ssize_t mhv4_recv(unsigned char *msg, size_t msglen,
 	struct iovec iov;
 	static unsigned char chdr[CMSG_BUF_LEN];
 	void *databufp = NULL;
-	int sockfd = mhv4_sock.fd;
+	fd_set readfds;
+	FD_ZERO(&readfds);
+	int max_fd;
+	int ret = -1;
+	int i= 0 ;
+
 	socklen_t hao_len;
 	ssize_t len;
+	struct iphdr *iph = NULL;
+	struct udphdr *udph = NULL;
 
-	iov.iov_len = msglen;
-	iov.iov_base = (unsigned char *)msg;
+	// add our descriptors to the set
+	FD_SET(mhv4_sock.ip_sock_fd, &readfds);
+	FD_SET(mhv4_sock.udp_sock_fd, &readfds);
+	if (mhv4_sock.ip_sock_fd > mhv4_sock.udp_sock_fd)
+		max_fd = mhv4_sock.ip_sock_fd;
+	else
+		max_fd = mhv4_sock.udp_sock_fd;
 
-	mhdr.msg_name = (void *)addr;
-	mhdr.msg_namelen = sizeof(struct sockaddr_in);
-	mhdr.msg_iov = &iov;
-	mhdr.msg_iovlen = 1;
-	mhdr.msg_control = (void *)&chdr;
-	mhdr.msg_controllen = CMSG_BUF_LEN;
-
-	if ((len = recvmsg(sockfd, &mhdr, 0)) < 0)
+	ret = select(max_fd+1, &readfds, NULL, NULL, NULL);
+	if (ret < 0)
+	{
+		dbg("Error in select, errno:%d\n", errno, 0, 0);
 		return -errno;
+	}
+	for (i=0; ( i <= max_fd ); i++)
+	{
+		if (FD_ISSET(i, &readfds))
+		{
+			if ( (i != mhv4_sock.ip_sock_fd) && (i != mhv4_sock.udp_sock_fd) )
+			{
+				dbg("invalid socket on select\n",0,0,0);
+				return -1;
+			}
+			else if ((i == mhv4_sock.ip_sock_fd) || (i == mhv4_sock.udp_sock_fd))
+			{
+				if (i== mhv4_sock.ip_sock_fd)
+					dbg("got packet without udp hedaer\n");
+				else
+					dbg("got packet with with udp hedaer\n");
+				iov.iov_len = msglen;
+				iov.iov_base = (unsigned char *)msg;
 
-	for (cmsg = CMSG_FIRSTHDR(&mhdr); cmsg;
-			cmsg = CMSG_NXTHDR(&mhdr, cmsg)) {
-		int ret = 0;
+				mhdr.msg_name = (void *)addr;
+				mhdr.msg_namelen = sizeof(struct sockaddr_in);
+				mhdr.msg_iov = &iov;
+				mhdr.msg_iovlen = 1;
+				mhdr.msg_control = (void *)&chdr;
+				mhdr.msg_controllen = CMSG_BUF_LEN;
 
-		if (cmsg->cmsg_level != IPPROTO_IP)
-			continue;
-		switch (cmsg->cmsg_type) {
-			case IP_PKTINFO:
-				memcpy(pkt_info, CMSG_DATA(cmsg), sizeof(*pkt_info));
-				break;
+				if ((len = recvmsg(i, &mhdr, 0)) < 0)
+				{
+					dbg ("recv masg failed\n");
+					return -errno;
+				}
+
+				for (cmsg = CMSG_FIRSTHDR(&mhdr); cmsg;
+						cmsg = CMSG_NXTHDR(&mhdr, cmsg)) {
+					int ret = 0;
+
+					if (cmsg->cmsg_level != IPPROTO_IP)
+						continue;
+					switch (cmsg->cmsg_type) {
+						case IP_PKTINFO:
+							memcpy(pkt_info, CMSG_DATA(cmsg), sizeof(*pkt_info));
+							break;
+					}
+				}
+				if (i == mhv4_sock.ip_sock_fd)
+				{
+					iph = (struct iphdr *)(msg);
+					if (iph->protocol == IPPROTO_MH)
+					{
+						*offset = sizeof (struct iphdr);
+						mh = (struct ip6_mh *)(msg + *offset);
+						dbg ("mipv6 packet type %d\n",mh->ip6mh_type);
+						len = (len) - *offset ;
+					}
+					else
+					{
+						// not pmip packet
+						return -1;
+					}
+				}
+				else if (i == mhv4_sock.udp_sock_fd)
+				{
+					//pmip packet on udp socket;
+					*offset = 0 ;
+					mh = (struct ip6_mh *)(msg + *offset);
+					dbg ("mipv6 packet type %d\n",mh->ip6mh_type);
+				}
+				else
+				{
+					//not pmip packet
+					return -1;
+				}
+				return len;
+			}
 		}
 	}
-	dbg("packet info \n");
-	mh = (struct ip6_mh *)(msg + sizeof (struct iphdr));
-	return len;
+	return -1;
+
 }
 
 
@@ -1255,13 +1482,15 @@ int mh_bu_parse(struct ip6_mh_binding_update *bu, ssize_t len,
 
 void mh_cleanup(void)
 {
-	close(mh_sock.fd);
+	close(mh_sock.udp_sock_fd);
+	close(mh_sock.ip_sock_fd);
 	pthread_cancel(mh_listener);
 	pthread_join(mh_listener, NULL);
 }
 void mhv4_cleanup(void)
 {
-	close(mhv4_sock.fd);
+	close(mhv4_sock.udp_sock_fd);
+	close (mhv4_sock.ip_sock_fd);
 	pthread_cancel(mhv4_listener);
 	pthread_join(mhv4_listener, NULL);
 }

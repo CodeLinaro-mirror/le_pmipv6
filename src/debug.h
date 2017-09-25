@@ -4,6 +4,8 @@
 #define __DEBUG_H__ 1
 
 #include <stdio.h>
+#include <sys/stat.h>
+#include "conf.h"
 
 #ifdef MIP6_NDEBUG
 #define NDEBUG 1

@@ -97,7 +97,7 @@ int lma_reg(pmip_entry_t * bce, int is_v4_lma_mode)
 				v6_ip = get_mn_addr(bce);
 				//add Route
 				inet_ntop(AF_INET6, v6_ip, addr_buf, INET6_ADDRSTRLEN);
-				snprintf (command,200,"ip -6 route add %s dev %s ", addr_buf, fname);
+				snprintf (command,200,"ip -6 route add %s/%d dev %s ", addr_buf, PREFIX_LENGTH, fname);
 				system (command);
 				dbg("ip v6 Route table com=%s=\n",command);
 			}
@@ -266,7 +266,7 @@ int lma_dereg(pmip_entry_t * bce, msg_info_t * info, int propagate, int is_v4_lm
 				v6_ip = get_mn_addr(bce);
 				//delete Route
 				inet_ntop(AF_INET6, v6_ip, addr_buf, INET6_ADDRSTRLEN);
-				snprintf (command,200,"ip -6 route del %s dev %s ", addr_buf, fname);
+				snprintf (command,200,"ip -6 route del %s/%d dev %s ", addr_buf,PREFIX_LENGTH, fname);
 				system (command);
 				dbg("ip v6 Route table com=%s=\n",command);
 			}
@@ -437,7 +437,7 @@ int lma_update_binding_entry(pmip_entry_t * bce, msg_info_t * info, int is_v4_lm
 								{
 								inet_ntop(AF_INET6, &bce->mn_addr, addr_buf, INET6_ADDRSTRLEN);
 								//Delete  Route
-								snprintf (command,200,"ip -6 route del %s dev %s ",addr_buf, fname);
+								snprintf (command,200,"ip -6 route del %s/%d dev %s ",addr_buf,PREFIX_LENGTH, fname);
 								system (command);
 								dbg("Route table com=%s=\n",command);
 								}

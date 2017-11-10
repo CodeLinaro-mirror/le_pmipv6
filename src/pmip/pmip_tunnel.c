@@ -49,6 +49,7 @@ int pmip_tunnel_del(int ifindex)
 		dbg("Decrease reference number of tunnel %d\n", ifindex);
 		if (ifindex > 0) {
 			int usercount = tunnel_getusers(ifindex);
+			dbg("current v6 tunnel # of binding entries %d \n", usercount);
 			if (usercount > 1 || conf.DynamicTunnelingEnabled) {
 				res = tunnel_del(ifindex, 0, 0);
 			} else if (usercount == 1) {
@@ -93,6 +94,7 @@ int pmipv4_tunnel_del(int ifindex)
 		dbg("Decrease reference number of tunnel %d\n", ifindex);
 		if (ifindex > 0) {
 			int usercount = tunnelv4_getusers(ifindex);
+			dbg("current v4 tunnel # of binding entries %d \n", usercount);
 			if (usercount > 1 || conf.DynamicTunnelingEnabled) {
 				res = tunnelv4_del(ifindex, 0, 0);
 			} else if (usercount == 1) {

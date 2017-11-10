@@ -176,7 +176,7 @@ int mag_fsm(msg_info_t * info)
 				dbg("Router solicitation received for existing MN\n");
 				bce = pmip_cache_get(&conf.OurAddress, &hw_address);
 				dbg("prefix before entering kickoff_ra : %x:%x:%x:%x:%x:%x:%x:%x \n", NIP6ADDR(&bce->mn_prefix));
-				mag_kickoff_ra(bce);
+				mag_kickoff_ra(bce, 0);
 				pmipcache_release_entry(bce);
 				dbg("RA sent after router solicitation ...\n");
 			} else if (info->msg_event == hasPBA) {
@@ -210,7 +210,7 @@ int mag_fsm(msg_info_t * info)
 				dbg("Incomming MN is detected by Wireless Access Point, existing MN\n");
 				bce = pmip_cache_get(&conf.OurAddress, &hw_address);
 				dbg("Prefix before entering kickoff_ra : %x:%x:%x:%x:%x:%x:%x:%x \n", NIP6ADDR(&bce->mn_prefix));
-				mag_kickoff_ra(bce);
+				mag_kickoff_ra(bce, 0);
 				// Some case where the access point did not detect the departure of the mobile node
 				// so we have to register again to the LMA
 				mag_force_update_registration(bce, info->iif, 0);

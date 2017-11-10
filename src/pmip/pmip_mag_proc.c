@@ -64,6 +64,7 @@ int mag_setup_route(struct in6_addr *pmip6_addr, int downlink)
 {
 	int res = 0;
 	uint8_t prefix_exist = 0;
+	struct in6_addr in_prefix;
 
 	if (conf.TunnelingEnabled) {
 		pmip_cache_iterate_ext(pmip_cache_get_prefix_match, (void*)pmip6_addr, (void *)&prefix_exist);
@@ -73,9 +74,10 @@ int mag_setup_route(struct in6_addr *pmip6_addr, int downlink)
 			return 1;
 		}
 
+		in_prefix = get_node_prefix(pmip6_addr);
 		//add a rule for MN for uplink traffic from MN must query the TABLE for PMIP --> tunneled
-		dbg("Uplink: Add new rule for tunneling src=%x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(pmip6_addr));
-		res = rule_add(NULL, RT6_TABLE_PMIP, IP6_RULE_PRIO_PMIP6_FWD, RTN_UNICAST, pmip6_addr, 64, &in6addr_any, 0, 0);
+		dbg("Uplink: Add new rule for tunneling src=%x:%x:%x:%x:%x:%x:%x:%x/64\n", NIP6ADDR(&in_prefix));
+		res = rule_add(NULL, RT6_TABLE_PMIP, IP6_RULE_PRIO_PMIP6_FWD, RTN_UNICAST, &in_prefix, 64, &in6addr_any, 0, 0);
 		if (res < 0) {
 			dbg("ERROR Add new rule for tunneling\n");
 		}
@@ -100,10 +102,10 @@ int mag_setup_v4_route(struct in_addr mn_v4_addr, char *table)
 		return -1;
 	}
 	snprintf (command,200,"ip rule del from %s table %s",inet_ntoa(mn_v4_addr), table);
-	system (command);
+	pmip_system_call(command,strlen(command),1);
 	//adding Route uplink
 	snprintf (command,200,"ip rule add from %s table %s",inet_ntoa(mn_v4_addr), table);
-	system (command);
+	pmip_system_call(command,strlen(command),1);
 	//downlink Route are added while running dnsmasq for network
 	dbg("mag_setup_v4_route added route for %s\n" , inet_ntoa(mn_v4_addr));
 	return 1;
@@ -119,8 +121,8 @@ int mag_remove_v4_route(struct in_addr mn_v4_addr, char *table)
 	}
 	//Removing Route
 	snprintf (command,200,"ip rule del from %s table %s",inet_ntoa(mn_v4_addr), table);
-	system (command);
-	dbg("mag_remove_route removed route for %s\n" , inet_ntoa(mn_v4_addr));
+	pmip_system_call(command,strlen(command),1);
+	dbg("mag_remove_v4_route removed route for %s\n" , inet_ntoa(mn_v4_addr));
 	return 1;
 
 }
@@ -128,63 +130,93 @@ int mag_setup_v6_route(struct in6_addr mn_v6_addr, char *table)
 {
 	char command[200]={0};;
 	char str[INET6_ADDRSTRLEN];
+	uint8_t prefix_exist = 0;
+	struct in6_addr in_prefix;
 	if (table == NULL)
 	{
 		dbg("Table name pointer is NULL\n");
 		return -1;
 	}
-	inet_ntop(AF_INET6, &mn_v6_addr,  str, INET6_ADDRSTRLEN);
-	snprintf (command,200,"ip -6 rule del from %s table %s",str,table);
-	system (command);
+	pmip_cache_iterate_ext(pmip_cache_get_prefix_match, (void*)&mn_v6_addr, (void *)&prefix_exist);
+	if(prefix_exist == 1)
+	{
+		dbg("mag_setup_v6_route: Matching prefix BCE entry exists. Do not Add setup rules\n", NIP6ADDR(&mn_v6_addr));
+		return 1;
+	}
+	in_prefix = get_node_prefix(&mn_v6_addr);
+
+	inet_ntop(AF_INET6, &in_prefix,  str, INET6_ADDRSTRLEN);
+
 	//adding Route uplink
-	snprintf (command,200,"ip -6 rule add from %s table %s",str,table);
-	system (command);
+	snprintf (command,200,"ip -6 rule add from %s/%d table %s",str,PREFIX_LENGTH,table);
+	pmip_system_call(command,strlen(command),1);
 	//downlink Route
-	snprintf (command,200,"ip -6 r add %s dev %s",str,
-BRIDGE_IFACE);
-	system (command);
+	snprintf (command,200,"ip -6 r add %s/%d dev %s",str,PREFIX_LENGTH,
+				BRIDGE_IFACE);
+	pmip_system_call(command,strlen(command),1);
 	dbg("mag_setup_v6_route added route for %s\n" , str);
 	return 1;
 }
 
-int mag_remove_v6_route(struct in6_addr mn_v6_addr, char *table)
+int mag_remove_v6_route(struct in6_addr mn_v6_addr, char *table, int force_remove)
 {
 	char command[200]={0};
 	char str[INET6_ADDRSTRLEN];
+	uint8_t prefix_exist = 0;
+	struct in6_addr in_prefix;
 	if (table == NULL)
 	{
 		dbg("Table name pointer is NULL\n");
 		return -1;
 	}
-	inet_ntop(AF_INET6, &mn_v6_addr,  str, INET6_ADDRSTRLEN);
+	pmip_cache_iterate_ext(pmip_cache_get_prefix_match, (void*)&mn_v6_addr, (void *)&prefix_exist);
+	if((force_remove != 1) && (prefix_exist == 1))
+	{
+		dbg("mag_remove_v6_route: Matching prefix BCE entry exists. Do not remove setup rules\n", NIP6ADDR(&mn_v6_addr));
+		return 1;
+	}
+	if (force_remove)
+	{
+		dbg("mag_remove_v6_route force remove all rules/route \n");
+	}
+	in_prefix = get_node_prefix(&mn_v6_addr);
+
+	inet_ntop(AF_INET6, &in_prefix,  str, INET6_ADDRSTRLEN);
 	//Removing Route
-	snprintf (command,200,"ip -6 rule del from %s table %s",str,table);
-	system (command);
+	snprintf (command,200,"ip -6 rule del from %s/%d table %s",str,PREFIX_LENGTH,table);
+	pmip_system_call(command,strlen(command),1);
 	//downlink Route delete
-	snprintf (command,200,"ip -6 r del %s dev %s",str,
-BRIDGE_IFACE);
-	system (command);
-	dbg("mag_remove_route removed route for %s\n" , str);
+	snprintf (command,200,"ip -6 r del %s/%d dev %s",str,PREFIX_LENGTH,
+		  BRIDGE_IFACE);
+	pmip_system_call(command,strlen(command),1);
+	dbg("mag_remove_v6_route removed route for %s/%d\n" , str,PREFIX_LENGTH);
 	return 1;
 }
 
 
 
 //---------------------------------------------------------------------------------------------------------------------
-int mag_remove_route(struct in6_addr *pmip6_addr, int downlink)
+int mag_remove_route(struct in6_addr *pmip6_addr, int downlink, int force_remove)
 {
 	int res = 0;
 	uint8_t prefix_exist = 0;
+	struct in6_addr in_prefix;
 	if (conf.TunnelingEnabled) {
 		pmip_cache_iterate_ext(pmip_cache_get_prefix_match, (void*)pmip6_addr, (void *)&prefix_exist);
-		if(prefix_exist == 1)
+		if((force_remove != 1) && (prefix_exist == 1))
 		{
 			dbg("mag_remove_route: Matching prefix BCE entry exists. Do not remove setup rules\n", NIP6ADDR(pmip6_addr));
 			return 1;
 		}
+		if (force_remove)
+		{
+			dbg("mag_remove_route force remove all rules/route \n");
+		}
+
+		in_prefix = get_node_prefix(pmip6_addr);
 		//Delete existing rule for the deleted MN
-		dbg("Uplink: Delete old rule for tunneling src=%x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(pmip6_addr));
-		res = rule_del(NULL, RT6_TABLE_PMIP, IP6_RULE_PRIO_PMIP6_FWD, RTN_UNICAST, pmip6_addr, 64, &in6addr_any, 0, 0);
+		dbg("Uplink: Delete old rule for tunneling src=%x:%x:%x:%x:%x:%x:%x:%x/64\n", NIP6ADDR(&in_prefix));
+		res = rule_del(NULL, RT6_TABLE_PMIP, IP6_RULE_PRIO_PMIP6_FWD, RTN_UNICAST, &in_prefix, 64, &in6addr_any, 0, 0);
 		if (res < 0) {
 			dbg("ERROR Del new rule for tunneling \n");
 		}
@@ -205,18 +237,19 @@ int mag_dereg(pmip_entry_t * bce, int propagate,int is_v4_pmip_mode)
 	//Delete existing route & rule for the deleted MN
 	int res = 0;
 	bce->type = BCE_NO_ENTRY;
+	int force_remove = 0;
 
 	//v6 route delete if v6 tunnel
 	if (!is_v4_pmip_mode && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
 	{
 		dbg("mag_dereg v6 route delete if v6 tunnel\n");
-		res = mag_remove_route(get_mn_addr(bce), bce->link);
+		res = mag_remove_route(get_mn_addr(bce), bce->link, force_remove);
 	}
 	//v6 route delete if v4 tunnel
 	if (!is_v4_pmip_mode && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
 	{
 		dbg("mag_dereg v6 route delete if v4 tunnel\n");
-		res = mag_remove_v6_route(bce->mn_addr, "pmipv4");
+		res = mag_remove_v6_route(bce->mn_addr, "pmipv4", force_remove);
 	}
 
 	//v4 route delete if v6 tunnel
@@ -370,14 +403,14 @@ int mag_end_registration(pmip_entry_t * bce, int iif, int is_v4_pmip_mode)
 	//ading Route for Ipv6 mn ip in v6 tunnel
 	if (!is_v4_pmip_mode && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
 	{
-		mag_kickoff_ra(bce);
+		mag_kickoff_ra(bce, 0);
 		dbg("Adding route for : %x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(get_mn_addr(bce)));
 		mag_setup_route(get_mn_addr(bce), bce->link);
 	}
 	//ading Route for Ipv6 ip in v4 tunnel
 	if (!is_v4_pmip_mode && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
 	{
-		mag_kickoff_ra(bce);
+		mag_kickoff_ra(bce, 0);
 		dbg("Adding route for : %x:%x:%x:%x:%x:%x:%x:%x\n", NIP6ADDR(get_mn_addr(bce)));
 		ret = tunnelv4_getname(bce->tunnel_v4,fname);
 		if (ret == 0)
@@ -455,7 +488,7 @@ int mag_end_registration_no_new_tunnel(pmip_entry_t * bce, int iif, int is_v4_pm
 	{
 		dbg("mag_end_registration_no_new_tunnel v6 case\n");
 		pmip_cache_start(bce);
-		mag_kickoff_ra(bce);
+		mag_kickoff_ra(bce, 0);
 	}
 	if (is_v4_pmip_mode == 1)
 	{
@@ -521,7 +554,7 @@ int mag_force_update_registration(pmip_entry_t * bce, int iif,int is_v4_pmip_mod
 	return 0;
 }
 //---------------------------------------------------------------------------------------------------------------------
-int mag_kickoff_ra(pmip_entry_t * bce)
+int mag_kickoff_ra(pmip_entry_t * bce, int send_deprecate_ra)
 {
 	struct in6_addr *src;
 	src = malloc(sizeof(struct in6_addr));
@@ -546,10 +579,20 @@ int mag_kickoff_ra(pmip_entry_t * bce)
 	radvert->nd_ra_flags_reserved |= (router_ad_iface.AdvOtherConfigFlag) ? ND_RA_FLAG_OTHER : 0;
 	/* Mobile IPv6 ext */
 	radvert->nd_ra_flags_reserved |= (router_ad_iface.AdvHomeAgentFlag) ? ND_RA_FLAG_HOME_AGENT : 0;
-	/* if forwarding is disabled, send zero router lifetime */
-	radvert->nd_ra_router_lifetime = !check_ip6_forwarding()? htons(router_ad_iface.AdvDefaultLifetime) : 0;
-	radvert->nd_ra_reachable = htonl(router_ad_iface.AdvReachableTime); //ask giuliana
-	radvert->nd_ra_retransmit = htonl(router_ad_iface.AdvRetransTimer); // ask giuliana
+	if (send_deprecate_ra == 1)
+	{
+		radvert->nd_ra_router_lifetime =  0;
+		radvert->nd_ra_reachable = 0;
+		radvert->nd_ra_retransmit = 0;
+	}
+	else
+	{
+		/* if forwarding is disabled, send zero router lifetime */
+		radvert->nd_ra_router_lifetime = !check_ip6_forwarding()? htons(router_ad_iface.AdvDefaultLifetime) : 0;
+		radvert->nd_ra_reachable = htonl(router_ad_iface.AdvReachableTime);
+		radvert->nd_ra_retransmit = htonl(router_ad_iface.AdvRetransTimer);
+	}
+
 	len = sizeof(struct nd_router_advert);
 	prefix = router_ad_iface.Adv_Prefix;
 	/*
@@ -564,8 +607,17 @@ int mag_kickoff_ra(pmip_entry_t * bce)
 	pinfo->nd_opt_pi_flags_reserved |= (prefix.AdvAutonomousFlag) ? ND_OPT_PI_FLAG_AUTO : 0;
 	/* Mobile IPv6 ext */
 	pinfo->nd_opt_pi_flags_reserved |= (prefix.AdvRouterAddr) ? ND_OPT_PI_FLAG_RADDR : 0;
-	pinfo->nd_opt_pi_valid_time = htonl(prefix.AdvValidLifetime);
-	pinfo->nd_opt_pi_preferred_time = htonl(prefix.AdvPreferredLifetime);
+	if (send_deprecate_ra == 1)
+	{
+		pinfo->nd_opt_pi_valid_time = htonl(2);
+		pinfo->nd_opt_pi_preferred_time = htonl(1);
+	}
+	else
+	{
+		pinfo->nd_opt_pi_valid_time = htonl(prefix.AdvValidLifetime);
+		pinfo->nd_opt_pi_preferred_time = htonl(prefix.AdvPreferredLifetime);
+	}
+
 	pinfo->nd_opt_pi_reserved2 = 0;
 	memcpy(&pinfo->nd_opt_pi_prefix, &bce->mn_prefix, sizeof(struct in6_addr));
 	len += sizeof(*pinfo);
@@ -617,7 +669,15 @@ int mag_kickoff_ra(pmip_entry_t * bce)
 		dbg("Adding RDNSS in RA\n");
 		rdnss->type = RDNSS_SERVER_TYPE;
 		rdnss->reserved = 0;
-		rdnss->lifetime= INFINITE_LIFE_TIME;
+		if (send_deprecate_ra == 1)
+		{
+			rdnss->lifetime= 0;
+		}
+		else
+		{
+			rdnss->lifetime= INFINITE_LIFE_TIME;
+		}
+
 		//rdnss lenth will determine the Numebr of DNS in RA
 		if (haspridns && hassecdns)
 		{
@@ -650,23 +710,28 @@ int check_ip6_forwarding(void)
 	int rc;
 	size_t size = sizeof(value);
 	FILE *fp = NULL;
+	if (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
+	{
+		dbg("Ipv6 forwading check is not required in ipv4 tunnel Mode\n" );
+		return 0;
+	}
 #ifdef __linux__
 	fp = fopen(PROC_SYS_IP6_FORWARDING, "r");
 	if (fp) {
 		rc = fscanf(fp, "%d", &value);
 		fclose(fp);
 		if (rc <= 0) {
-			dbg("ERROR reading %s" ,PROC_SYS_IP6_FORWARDING);
+			dbg("ERROR reading %s\n" ,PROC_SYS_IP6_FORWARDING);
 		}
 	} else
-		dbg("Correct IPv6 forwarding procfs entry not found, " "perhaps the procfs is disabled, " "or the kernel interface has changed?");
+		dbg("Correct IPv6 forwarding procfs entry not found, " "perhaps the procfs is disabled, " "or the kernel interface has changed?\n");
 #endif              /* __linux__ */
 	if (!fp && sysctl(forw_sysctl, sizeof(forw_sysctl) / sizeof(forw_sysctl[0]), &value, &size, NULL, 0) < 0) {
-		dbg("Correct IPv6 forwarding sysctl branch not found, " "perhaps the kernel interface has changed?");
+		dbg("Correct IPv6 forwarding sysctl branch not found, " "perhaps the kernel interface has changed?\n");
 		return (0);     /* this is of advisory value only */
 	}
 	if (value < 1) {
-		dbg("IPv6 forwarding setting is: %u, should be 1", value);
+		dbg("IPv6 forwarding setting is: %u, should be 1\n", value);
 		return (-1);
 	}
 	return (0);

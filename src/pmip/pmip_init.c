@@ -56,20 +56,34 @@ static int pmipv4_cache_delete_each(void *data, void *arg)
 	//---------------------------------------------------------------------------------------------------------------------
 {
 	pmip_entry_t *bce = (pmip_entry_t *) data;
+	int usercount = 0;
 	if (is_mag()) {
-		//Delete existing route & rule for the deleted MN
 		mag_remove_v4_route(bce->mnv4_addr,"pmipv4");
-		int usercount = tunnelv4_getusers(bce->tunnel_v4);
-		dbg("# of binding entries %d \n", usercount);
-
-		//decrement users of old tunnel.
-		pmipv4_tunnel_del(bce->tunnel_v4);
+		//Delete existing route & rule for the deleted MN
+		if (conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
+		{
+			usercount = tunnel_getusers(bce->tunnel);
+			//decrement users of old tunnel.
+			pmip_tunnel_del(bce->tunnel);
+		}
+		else if (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
+		{
+			//decrement users of old tunnel.
+			pmipv4_tunnel_del(bce->tunnel_v4);
+		}
 	}
 	//Delete existing route for the deleted MN
 	if (is_lma()) {
 		lma_remove_route(&bce->mn_addr, bce->tunnel);
 		//decrement users of old tunnel.
-		pmipv4_tunnel_del(bce->tunnel_v4);
+		if (conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
+		{
+			pmip_tunnel_del(bce->tunnel);
+		}
+		else if (conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
+		{
+			pmipv4_tunnel_del(bce->tunnel_v4);
+		}
 	}
 	//Delete the Entry.
 	free_iov_data((struct iovec *) &bce->mh_vec, bce->iovlen);
@@ -83,22 +97,44 @@ static int pmip_cache_delete_each(void *data, void *arg)
 	//---------------------------------------------------------------------------------------------------------------------
 {
 	pmip_entry_t *bce = (pmip_entry_t *) data;
+	int usercount = 0;
+	int force_remove = 1;
 	if (is_mag()) {
-		//Delete existing route & rule for the deleted MN
-		mag_remove_route(&bce->mn_addr, bce->link);
-		int usercount = tunnel_getusers(bce->tunnel);
-		dbg("# of binding entries %d \n", usercount);
-		if (usercount == 1) {
-			route_del(bce->tunnel, RT6_TABLE_PMIP, IP6_RT_PRIO_MIP6_FWD, &in6addr_any, 0, &in6addr_any, 0, NULL);
+		//send depricate RA
+		dbg ("Sending the deprecate RA\n");
+		mag_kickoff_ra(bce, 1);
+		//Delete existing route & rule for the deleted MN for v6 tunnel
+		if (conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
+		{
+			mag_remove_route(&bce->mn_addr, bce->link, force_remove);
+			usercount = tunnel_getusers(bce->tunnel);
+			if (usercount == 1) {
+				route_del(bce->tunnel, RT6_TABLE_PMIP, IP6_RT_PRIO_MIP6_FWD, &in6addr_any, 0, &in6addr_any, 0, NULL);
+			}
+			//decrement users of old tunnel.
+			pmip_tunnel_del(bce->tunnel);
 		}
-		//decrement users of old tunnel.
-		pmip_tunnel_del(bce->tunnel);
+		//Delete existing route & rule for the deleted MN for v4 tunnel
+		else if (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
+		{
+			mag_remove_v6_route(bce->mn_addr, "pmipv4", force_remove);
+
+			//decrement users of old tunnel.
+			pmipv4_tunnel_del(bce->tunnel_v4);
+		}
 	}
 	//Delete existing route for the deleted MN
 	if (is_lma()) {
 		lma_remove_route(&bce->mn_addr, bce->tunnel);
 		//decrement users of old tunnel.
-		pmip_tunnel_del(bce->tunnel);
+		if (conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
+		{
+			pmip_tunnel_del(bce->tunnel);
+		}
+		else if (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
+		{
+			pmipv4_tunnel_del(bce->tunnel_v4);
+		}
 	}
 	//Delete the Entry.
 	free_iov_data((struct iovec *) &bce->mh_vec, bce->iovlen);
@@ -109,6 +145,7 @@ static int pmip_cache_delete_each(void *data, void *arg)
 void pmip_cleanup(void)
 	//---------------------------------------------------------------------------------------------------------------------
 {
+	dbg("pmip cleanup...\n");
 	if ((conf.pmip_mode_type == IP_FAMILY_V6_V01) || (conf.pmip_mode_type == IP_FAMILY_V4V6_V01))
 	{
 		//Release the pmip cache ==> deletes the routes and rules and "default route on PMIP" and tunnels created.
@@ -132,6 +169,11 @@ void pmip_cleanup(void)
 		dbg("Release pmipv4 cache...\n");
 		pmipv4_cache_iterate(pmipv4_cache_delete_each, NULL);
 	}
+
+	//Remove the pmipv4 table from iproute2
+	dbg("Remove the pmipv4 table from iproute2\n");
+	pmip_system_call("sed -i /'201 pmipv4'/d /etc/iproute2/rt_tables",
+			strlen("sed -i /'201 pmipv4'/d /etc/iproute2/rt_tables"),1);
 
 	//#undef HAVE_PCAP_BREAKLOOP
 #define HAVE_PCAP_BREAKLOOP
@@ -178,7 +220,7 @@ int pmip_common_init(void)
 	}
 	close(probe_fd);
 
-if ((conf.pmip_mode_type == IP_FAMILY_V6_V01 || conf.pmip_mode_type == IP_FAMILY_V4V6_V01)) {
+	if ((conf.pmip_mode_type == IP_FAMILY_V6_V01 || conf.pmip_mode_type == IP_FAMILY_V4V6_V01)) {
 		/**
 		 * Initializes PMIP cache.
 		 **/
@@ -188,8 +230,8 @@ if ((conf.pmip_mode_type == IP_FAMILY_V6_V01 || conf.pmip_mode_type == IP_FAMILY
 		} else {
 			dbg("PMIP Binding Cache is initialized!\n");
 		}
-}
-if((conf.pmip_mode_type == IP_FAMILY_V4_V01 || conf.pmip_mode_type == IP_FAMILY_V4V6_V01)){
+	}
+	if((conf.pmip_mode_type == IP_FAMILY_V4_V01 || conf.pmip_mode_type == IP_FAMILY_V4V6_V01)){
 		/**
 		 * Initializes PMIPv4 cache.
 		 **/

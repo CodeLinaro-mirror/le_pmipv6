@@ -74,13 +74,13 @@ struct rdnss_info {
 * \return   Returns zero on success, negative otherwise.
 */
 private_pmip_mag_proc(int mag_setup_route(struct in6_addr *pmip6_addr, int downlink);)
-/*! \fn int mag_remove_route(struct in6_addr *, int )
+/*! \fn int mag_remove_route(struct in6_addr *, int , int)
 * \brief  Remove a route on a MAG
 * \param[in]  pmip6_addr Mobile node destination address
 * \param[in]  downlink Outgoing downlink interface id
 * \return   Returns zero on success, negative otherwise.
 */
-protected_pmip_mag_proc(int mag_remove_route(struct in6_addr *pmip6_addr, int downlink);)
+protected_pmip_mag_proc(int mag_remove_route(struct in6_addr *pmip6_addr, int downlink, int force_remove);)
 /*! \fn int mag_dereg(pmip_entry_t * bce, int propagate)
 * \brief  Deregister a binding cache entry and its associated network configuration.
 * \param[in]  bce       A binding cache entry
@@ -112,12 +112,12 @@ protected_pmip_mag_proc(int mag_end_registration(pmip_entry_t * bce, int iif, in
 *           a tunnel between LMA and this MAG.
 */
 protected_pmip_mag_proc(int mag_force_update_registration(pmip_entry_t * bce, int iif, int is_v4_pmip_mode);)
-/*! \fn int mag_kickoff_ra(pmip_entry_t * bce)
+/*! \fn int mag_kickoff_ra(pmip_entry_t * bce, int)
 * \brief  Start sendind router advertisements to a mobile node.
 * \param[in]  bce A binding cache entry
 * \return   Returns zero on success, negative otherwise.
 */
-protected_pmip_mag_proc(int mag_kickoff_ra(pmip_entry_t * bce);)
+protected_pmip_mag_proc(int mag_kickoff_ra(pmip_entry_t * bce,int send_deprecate_ra);)
 /*! \fn int check_ip6_forwarding(void)
 * \brief  Check if IPv6 forwarding is set in the kernel
 * \return   Zero if forwarding is set, else -1.

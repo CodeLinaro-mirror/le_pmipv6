@@ -101,6 +101,7 @@ static void terminate(void)
 	/* got SIGINT, cleanup and exit */
 	syslog(LOG_INFO, "terminated (SIGINT)");
 	dbg("got SIGINT, exiting\n");
+	system("echo 'pmip: Got Pmip Terminate signal ' > /dev/kmsg");
 	pmip_cleanup();
 	debug_close();
 	pthread_exit(NULL);
@@ -361,7 +362,11 @@ int main(int argc, char **argv)
 		system("killall -9 dnsmasq");
 		ret = getifaceip(&sa, BRIDGE_IFACE);
 		if (ret == 0) {
-			snprintf (command,MAX_DHCP_COMMAND_STR_LEN,"dnsmasq -i %s -I lo -z --dhcp-range=%s,%s,static,255.255.255.0,43200 --dhcp-hostsfile=/etc/dhcp_hosts --dhcp-option-force=6,%s --dhcp-option-force=3,%s",BRIDGE_IFACE,BRIDGE_IFACE,inet_ntoa(sa),inet_ntoa(sa),inet_ntoa(sa));
+			//clear DHCP reservation file
+			snprintf (command,MAX_DHCP_COMMAND_STR_LEN,"echo > %s",PMIP_DHCP_RESER_FILE);
+			pmip_system_call(command,strlen(command),1);
+
+			snprintf (command,MAX_DHCP_COMMAND_STR_LEN,"dnsmasq -i %s -I lo -z --dhcp-range=%s,%s,static,255.255.255.0,43200 --dhcp-hostsfile=%s --dhcp-option-force=6,%s --dhcp-option-force=3,%s",BRIDGE_IFACE,BRIDGE_IFACE,inet_ntoa(sa),PMIP_DHCP_RESER_FILE,inet_ntoa(sa),inet_ntoa(sa));
 			if (conf.pmip_mode_type == IP_FAMILY_V4V6_V01)
 			{
 				dbg ("Add dnsmasq ipv6 dnsoption\n");

@@ -145,6 +145,7 @@ static int pmip_cache_delete_each(void *data, void *arg)
 void pmip_cleanup(void)
 	//---------------------------------------------------------------------------------------------------------------------
 {
+	char command[MAX_DHCP_COMMAND_STR_LEN] = {0};
 	dbg("pmip cleanup...\n");
 	if ((conf.pmip_mode_type == IP_FAMILY_V6_V01) || (conf.pmip_mode_type == IP_FAMILY_V4V6_V01))
 	{
@@ -168,12 +169,18 @@ void pmip_cleanup(void)
 
 		dbg("Release pmipv4 cache...\n");
 		pmipv4_cache_iterate(pmipv4_cache_delete_each, NULL);
+
+		//clear DHCP reservation file
+		snprintf (command,MAX_DHCP_COMMAND_STR_LEN,"echo > %s",PMIP_DHCP_RESER_FILE);
+		pmip_system_call(command,strlen(command),1);
+		system("echo 'pmip: Cleared the Pmip reservation file on terminate signal ' > /dev/kmsg");
 	}
 
 	//Remove the pmipv4 table from iproute2
 	dbg("Remove the pmipv4 table from iproute2\n");
 	pmip_system_call("sed -i /'201 pmipv4'/d /etc/iproute2/rt_tables",
 			strlen("sed -i /'201 pmipv4'/d /etc/iproute2/rt_tables"),1);
+	system("echo 'pmip: termination completed' > /dev/kmsg");
 
 	//#undef HAVE_PCAP_BREAKLOOP
 #define HAVE_PCAP_BREAKLOOP

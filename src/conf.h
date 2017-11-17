@@ -11,6 +11,7 @@
 #define PMIP_RESERVED_PORT 5436
 #define MAX_COMMAND_STRING_LEN 500
 #define PMIP_INVALID_ID_STRING "-1"
+#define PMIP_DHCP_RESER_FILE "/etc/pmip_dhcp_hosts"
 
 
 

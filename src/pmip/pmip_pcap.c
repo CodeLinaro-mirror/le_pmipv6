@@ -127,7 +127,7 @@ void pmip_pcap_msg_handler_deassociate(struct in6_addr mn_iidP, int iifP)
 		dbg("-------------------pmip_pcap_msg_handler_deassociate-----------------------\n");
 		dbg("pmip_pcap_msg_handler_deassociate mac address : %02x:%02x:%02x:%02x:%02x:%02x\n", mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
 		mac_addr_ntop(mac, (char *)&macStr);
-		snprintf(command, 200,"sed -i '/%s/d' /etc/dhcp_hosts",macStr);
+		snprintf(command, 200,"sed -i '/%s/d' %s",macStr,PMIP_DHCP_RESER_FILE);
 		pmip_system_call(command,strlen(command),1);
 		dbg("SIGUP signal send to dnsmasq\n");
 		system ("killall -1 dnsmasq");

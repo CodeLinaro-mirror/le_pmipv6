@@ -262,8 +262,8 @@ int getipforclient(struct in_addr *addr)
 	}
 	addr->s_addr = conf.current_ip;
 	ip = inet_ntoa(*addr);
-	while (isrervationexits("/etc/dhcp_hosts",ip) !=0 ){
-		dbg("ip %s exits in /etc/dhcp_hosts picking next ip\n",ip);
+	while (isrervationexits(PMIP_DHCP_RESER_FILE,ip) !=0 ){
+		dbg("ip %s exits in %s picking next ip\n",ip, PMIP_DHCP_RESER_FILE);
 		conf.current_ip = htonl(ntohl(conf.current_ip) - 1);
 		if (conf.current_ip < conf.dhcp_start_ip.s_addr) {
 			dbg("Ip range exhausted no ip available\n");
@@ -282,6 +282,7 @@ int getipforclient(struct in_addr *addr)
 int isrervationexits(char *filename ,char *str)
 {
 	FILE *file = fopen ( filename, "r" );
+	char command[MAX_DHCP_COMMAND_STR_LEN] = {0};
 	dbg("in isrervationexits file=%s, check str=%s=\n",filename,str);
 	if ( file != NULL )
 	{
@@ -291,6 +292,8 @@ int isrervationexits(char *filename ,char *str)
 			if (strstr(line, str))
 			{
 				dbg("entry '%s' matching passed return match success\n",str);
+				snprintf (command, MAX_DHCP_COMMAND_STR_LEN, "echo 'pmip: entry exits for ip %s' /dev/kmsg",str);
+				pmip_system_call(command,strlen(command),1);
 				fclose ( file );
 				return 1;
 			}
@@ -418,10 +421,15 @@ int mag_fsm_v4(msg_info_t * info)
 					dbg("BCE_NO_ENTRY New MN dhcp Request ...\n");
 					dbg ("BCE_NO_ENTRY client requested ip =%s\n",inet_ntoa(info->dhcp_request_ip));
 					if (!is_requested_ip_in_same_range(info->dhcp_request_ip)) {
+						snprintf (command, MAX_DHCP_COMMAND_STR_LEN, "echo 'pmip: TBCE_NO_ENTRY dhcp request Will be discarded as request Ip is outside range' /dev/kmsg ");
+						pmip_system_call(command,strlen(command),1);
 						dbg("BCE_NO_ENTRY dhcp request Will be discarded as request Ip is outside range\n");
 						break;
 					}
-					if (isrervationexits("/etc/dhcp_hosts",inet_ntoa(info->dhcp_request_ip))) {
+					if (isrervationexits(PMIP_DHCP_RESER_FILE,inet_ntoa(info->dhcp_request_ip))) {
+						snprintf (command, MAX_DHCP_COMMAND_STR_LEN, "echo 'pmip: The requested Ip %s is "
+									" already reserved for some client discard dhcp request' /dev/kmsg",inet_ntoa(info->dhcp_request_ip));
+						pmip_system_call(command,strlen(command),1);
 						dbg ("The requested Ip %s is already reserved for some client discard dhcp request\n",inet_ntoa(info->dhcp_request_ip));
 						break;
 					}
@@ -493,8 +501,11 @@ int mag_fsm_v4(msg_info_t * info)
 							} else {
 								memcpy(home_prefix, inet_ntoa(info->v4_home_prefix), INET_ADDRSTRLEN);
 								dbg("BCE_TEMP Got ip in home prefix reply =%s prefix len=%d\n",home_prefix,info->v4_home_prefixlen);
-								//mask.s_addr = prefix_to_mask(info->v4_home_prefixlen);
-								snprintf (command,MAX_DHCP_COMMAND_STR_LEN ,"dnsmasq -i %s -I lo -z --dhcp-range=%s,%s,static,%s,43200 --dhcp-hostsfile=/etc/dhcp_hosts ",BRIDGE_IFACE,BRIDGE_IFACE,home_prefix,inet_ntoa(conf.dhcp_sub_mask));
+								//clear DHCP reservation file
+								snprintf (command,MAX_DHCP_COMMAND_STR_LEN,"echo > %s",PMIP_DHCP_RESER_FILE);
+								pmip_system_call(command,strlen(command),1);
+
+								snprintf (command,MAX_DHCP_COMMAND_STR_LEN ,"dnsmasq -i %s -I lo -z --dhcp-range=%s,%s,static,%s,43200 --dhcp-hostsfile=%s ",BRIDGE_IFACE,BRIDGE_IFACE,home_prefix,inet_ntoa(conf.dhcp_sub_mask), PMIP_DHCP_RESER_FILE);
 								if (conf.PrimaryV4Dns.s_addr != 0)
 								{
 									isprimdnsvalid = 1;
@@ -597,7 +608,7 @@ int mag_fsm_v4(msg_info_t * info)
 							bce->mnv4_addr = info->v4_home_prefix;
 							dbg("Saving MN v4 ip so that while Sending next PBU this can be used\n");
 							bce->dhcp_requested_ip = bce->mnv4_addr;
-							snprintf(command, MAX_DHCP_COMMAND_STR_LEN,"echo %s,%s >> /etc/dhcp_hosts",macStr,inet_ntoa(info->v4_home_prefix));
+							snprintf(command, MAX_DHCP_COMMAND_STR_LEN,"echo %s,%s >> %s",macStr,inet_ntoa(info->v4_home_prefix),PMIP_DHCP_RESER_FILE);
 							pmip_system_call(command,strlen(command),1);
 							//sending signal to dnsmasq to re-read hosts file
 							system("killall -1 dnsmasq");

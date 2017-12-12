@@ -178,8 +178,9 @@ void pmip_cleanup(void)
 
 	//Remove the pmipv4 table from iproute2
 	dbg("Remove the pmipv4 table from iproute2\n");
-	pmip_system_call("sed -i /'201 pmipv4'/d /etc/iproute2/rt_tables",
-			strlen("sed -i /'201 pmipv4'/d /etc/iproute2/rt_tables"),1);
+	snprintf (command,MAX_DHCP_COMMAND_STR_LEN,"sed -i /'201 pmipv4'/d %s", PMIP_ROUTE_TABLE);
+	pmip_system_call(command,strlen(command),1);
+
 	system("echo 'pmip: termination completed' > /dev/kmsg");
 
 	//#undef HAVE_PCAP_BREAKLOOP

@@ -72,8 +72,6 @@ typedef enum
 
 typedef struct
 {
-	uint8_t       isValidIPv6address;
-	uint8_t       v6_addr[PMIP_IPV6_ADDR_LEN];
 	uint8_t       mac_addr[PMIP_MAC_ADDR_LEN];
 	uint8_t       if_id;
 	ip_family_enum_v01       pmip_mode;
@@ -428,14 +426,8 @@ void pmip_pcap_loop(char *devname, int iif)
 			{
 				continue;
 			}
-			inet_ntop(AF_INET6, send_dev_info->dev_info.v6_addr, ip6_addr_str, INET6_ADDRSTRLEN);
 
 			mac_addr_ntop((uint8_t *)send_dev_info->dev_info.mac_addr, (char *)&mac_addr_str);
-
-			dbg("Got info to delete: ipv6valid: %d mac:%s v6add:%s\n",
-					send_dev_info->dev_info.isValidIPv6address,
-					mac_addr_str,
-					ip6_addr_str);
 
 			mac_to_ipv6((uint8_t *)(send_dev_info->dev_info.mac_addr),&hw_address);
 			inet_ntop(AF_INET6, (uint8_t*)&hw_address, ip6_addr_str, INET6_ADDRSTRLEN);

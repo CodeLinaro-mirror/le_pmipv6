@@ -392,10 +392,7 @@ int main(int argc, char **argv)
 	{
 		dbg("not pmip v4 mode do not start dhcp deamon mode=%d\n",conf.pmip_mode_type);
 	}
-	if (!(is_ha()) && !(is_mag()) && !(is_lma()))
-		if (xfrm_init() < 0)
-			goto xfrm_failed;
-	cn_init();
+
 	//If tunnel mode v6 or Pmip mode is v6 listen for IPv6 traffic
 	if ((conf.pmip_mode_type == IP_FAMILY_V4_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
 		 || (conf.pmip_mode_type == IP_FAMILY_V6_V01 && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
@@ -458,9 +455,6 @@ tunnelctlv4_failed:
 		tunnelctlv4_cleanup();
 		}
 
-xfrm_failed:
-	cn_cleanup();
-	xfrm_cleanup();
 icmp6_failed:
 	icmp6_cleanup();
 mh_failed:

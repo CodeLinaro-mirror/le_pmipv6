@@ -31,7 +31,7 @@
 #include <pthread.h>
 #include <errno.h>
 #include <net/if.h>
-#include <netinet/ip.h>
+//#include <netinet/ip.h>
 #include <netinet/icmp6.h>
 #include <netinet/ip6mh.h>
 #include <sys/ioctl.h>

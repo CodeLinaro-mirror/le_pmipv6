@@ -23,7 +23,7 @@
 #include "pmip_types.h"
 #include "debug.h"
 #include "util.h"
-
+#include <netinet/ip.h>
 
 /* filter to capture dhcp port 67 & ARP packet:   tcpdump "dst port 67 or arp" -dd   */
 struct sock_filter code[] = {

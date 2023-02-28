@@ -59,7 +59,7 @@
 
 #include <net/if.h>
 #include <sys/ioctl.h>
-#include <netinet/ip.h>
+//#include <netinet/ip.h> -- commenting to avoid multyple definitions of struct iphdr
 #include <linux/if_tunnel.h>
 #include <linux/ip6_tunnel.h>
 #include <pthread.h>
@@ -853,12 +853,14 @@ static struct mip4_tnl *__tunnel_addv4(struct in_addr *local,
 	//looks to be some bug in ip tunnel command. Ip tunnel add not providing LLipv6 address to interface
 	//creating temperary tunnel & deleting that once main tunnel is created successfully
 	pmip_system_call("ip t d ip4gre1",strlen("ip t d ip4gre1"),1);
-	//snprintf(command,200,"ip tunnel add %s mode gre remote %s local %s ttl %d dev %s ikey %d okey %d",tnl->parm.name,tmpstr,inet_ntoa(*remote),tnl->parm.hop_limit,ifac,tnl->parm.i_key,tnl->parm.o_key);
-	//	ret=system(command);
-	snprintf(command,200,"ip tunnel add %s mode gre remote 1.2.3.4 local 3.4.5.6 ttl %d ikey %d okey %d",tnl->parm.name,tnl->parm.hop_limit,tnl->parm.i_key,tnl->parm.o_key);
+	snprintf(command,200,"ip tunnel add %s mode gre remote %s local %s ttl %d dev %s ikey %d okey %d",tnl->parm.name,inet_ntoa(*remote),tmpstr,tnl->parm.hop_limit,ifac,tnl->parm.i_key,tnl->parm.o_key);
+	ret=system(command);
+	/*Temporary tunnle created to avoid Ip tunnel add not providing LLipv6 address to interface
+         * Fixed with latest Kernels
+         * snprintf(command,200,"ip tunnel add %s mode gre remote 1.2.3.4 local 3.4.5.6 ttl %d ikey %d okey %d",tnl->parm.name,tnl->parm.hop_limit,tnl->parm.i_key,tnl->parm.o_key);
 	pmip_system_call(command,strlen(command),1);
 		snprintf(command,200,"ip tunnel change %s remote %s local %s",tnl->parm.name,inet_ntoa(*remote),tmpstr);
-	pmip_system_call(command,strlen(command),1);
+	pmip_system_call(command,strlen(command),1);*/
 	snprintf(command,200,"ip link set %s up",tnl->parm.name);
 	pmip_system_call(command,strlen(command),1);
 

@@ -145,8 +145,10 @@ static int mh_try_pad(const struct iovec *in, struct iovec *out, int count)
 	out[0].iov_base = in[0].iov_base;
 	len += in[0].iov_len;
 	for (m = 1; m < count; m++) {
+                //Null check to avoid crash
+                if(in[m].iov_base) {
 		opt = (struct ip6_mh_opt *) in[m].iov_base;
-		switch (opt->ip6mhopt_type) {
+		  switch (opt->ip6mhopt_type) {
 			case IP6_MHOPT_BREFRESH:
 				pad = optpad(2, 0, len);    /* 2n */
 				break;
@@ -211,6 +213,12 @@ static int mh_try_pad(const struct iovec *in, struct iovec *out, int count)
 		out[n].iov_len = in[m].iov_len;
 		out[n].iov_base = in[m].iov_base;
 		n++;
+            }
+        else
+        {
+          dbg("mh_try_pad in[%d].iov_base null\n",m);
+        }
+
 	}
 	dbg("making lenght multiple of octate\n");
 		pad = optpad(8, 0, len);
@@ -404,7 +412,7 @@ int mh_create_opt_v4_home_addr_request_option(struct iovec *iov, struct in_addr 
 
 	 Prefix-len
 	 This 6-bit unsigned integer indicating the prefix length of the
-	 mobile node’s IPv4 home network corresponding to the IPv4 home
+	 mobile node's IPv4 home network corresponding to the IPv4 home
 	 address contained in the option.
 
 	 Reserved
@@ -497,7 +505,7 @@ int mh_create_opt_v4_dmnp_option(struct iovec *iov, struct in_addr *dmnp_prefix,
 	 field.
 
 	 Delegated Mobile Network Prefix
-	 Contains a mobile router’s 4-byte IPv4 or a 16-byte IPv6 Delegated
+	 Contains a mobile router's 4-byte IPv4 or a 16-byte IPv6 Delegated
 	 Mobile Network Prefix.
 
 
@@ -708,7 +716,7 @@ int mh_create_opt_dmnp(struct iovec *iov, struct in_addr *dmnp_pref, uint8_t *dm
 	 field.
 
 	 Delegated Mobile Network Prefix
-	 Contains a mobile router’s 4-byte IPv4 or a 16-byte IPv6 Delegated
+	 Contains a mobile router's 4-byte IPv4 or a 16-byte IPv6 Delegated
 	 Mobile Network Prefix.
 
 
@@ -746,7 +754,7 @@ int mh_create_opt_v4_home_adrr_reply(struct iovec *iov, struct in_addr *ip_reque
 	 A new option, the IPv4 Home Address Reply option, is defined for use
 	 in the Proxy Binding Acknowledgement message sent by the local
 	 mobility anchor to the mobile access gateway. This option can be
-	 used to send the assigned mobile node’s IPv4 home address.
+	 used to send the assigned mobile node's IPv4 home address.
 	 The IPv4 Home Address Reply option has an alignment requirement of
 	 4n. Its format is as follows:
 
@@ -785,7 +793,7 @@ int mh_create_opt_v4_home_adrr_reply(struct iovec *iov, struct in_addr *ip_reque
 
 	 Prefix-len
 	 This 6-bit unsigned integer is used to carry the prefix length
-	 of the mobile node’s IPv4 home network corresponding to the
+	 of the mobile node's IPv4 home network corresponding to the
 	 IPv4 home address contained in the option.
 
 	 Reserved (Res)
@@ -842,7 +850,7 @@ int mh_create_opt_v4_default_router_opt(struct iovec *iov)
 	 A new option, the IPv4 Default-Router Address option, is defined for
 	 use in the Proxy Binding Acknowledgement message sent by the local
 	 mobility anchor to the mobile access gateway. This option can be
-	 used to send the mobile node’s IPv4 default router address.
+	 used to send the mobile node's IPv4 default router address.
 	 The IPv4 Default-Router Address option has an alignment requirement
 	 of 4n. Its format is as follows:
 
@@ -877,7 +885,7 @@ int mh_create_opt_v4_default_router_opt(struct iovec *iov)
 	 receiver.
 
 	 IPv4 Default-Router Address
-	 A 4-byte field containing the mobile node’s default router
+	 A 4-byte field containing the mobile node's default router
 	 address.
 
 

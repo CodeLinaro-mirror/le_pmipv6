@@ -1,1 +1,1 @@
-#define DEFAULT_CONFIG_FILE "/usr/local/etc/pmip6d.conf"
+#define DEFAULT_CONFIG_FILE "/etc/data/pmip-mag.conf"

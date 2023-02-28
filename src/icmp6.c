@@ -606,35 +606,23 @@ int pmip_add_dnsmasq_v6dns_option(char * dhcp_command)
 }
 int pmipv6_start_dnsmasq_with_dhcpv6_option()
 {
-	FILE* fp;
-	const char* check_cmd = "ps -o args | grep dnsmasq | grep -v grep";
 	char dhcp_command[MAX_DHCP_COMMAND_STR_LEN] = {0};
-
+        char kill_command[MAX_DHCP_COMMAND_STR_LEN] = {0};
 	//Read current dnsmasq options
-	if((fp = popen(check_cmd, "r")) == NULL)
-	{
-		dbg("Error checking dnsmasq \n", errno, 0, 0);
-		pclose(fp);
+	snprintf( dhcp_command, MAX_DHCP_COMMAND_STR_LEN, "/usr/bin/dnsmasq --conf-file=/var/run/data/dnsmasq.conf.bridge0 ");
+
+        if (pmip_add_dnsmasq_v6dns_option(dhcp_command) < 0)
+        {
+		dbg("error: pmip_add_dnsmasq_v6dns_option failed\n");
 		return -1;
 	}
 
-	if(fgets(dhcp_command, sizeof(dhcp_command), fp))
-	{
-		dbg("Reading dnsmasq command from ps succesed=%s=\n",dhcp_command);
-		pclose(fp);
-		dhcp_command[strlen(dhcp_command) - 1] = '\0';
-		if (pmip_add_dnsmasq_v6dns_option(dhcp_command) < 0)
-		{
-			dbg("error: pmip_add_dnsmasq_v6dns_option failed\n");
-			return -1;
-		}
-		pmip_system_call("killall -9 dnsmasq",strlen("killall -9 dnsmasq"),1);
-		pmip_system_call(dhcp_command,strlen(dhcp_command),1);
-		return 1;
-	}
-	dbg("Error Reading dnsmasq command from ps failed\n");
-	pclose(fp);
-	return -1;
+        dbg("Kiiling dnsmasq .\n");
+        snprintf( kill_command, 200, "kill -9 $(cat /var/run/data/dnsmasq.pid)");
+        pmip_system_call(kill_command, strlen(kill_command),1);
+             
+        pmip_system_call(dhcp_command,strlen(dhcp_command),1);
+	return 1;
 }
 
 //comment code to forward dhcpv6 packet to tunnel may be needed in future

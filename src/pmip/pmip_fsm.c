@@ -339,8 +339,9 @@ int is_requested_ip_in_same_range(struct in_addr request_ip)
 		dbg ("requested Ip is Not in same network . Dont Send PBU\n");
 		return 0;
 	}
-	if (((request_ip.s_addr) >= (conf.dhcp_start_ip.s_addr)) && ((request_ip.s_addr) <= (conf.dhcp_end_ip.s_addr))) {
-		dbg("Requested Ip is in Lan range provided during pmip run .\n");
+        if ((htonl(request_ip.s_addr) >= htonl(conf.dhcp_start_ip.s_addr)) && (htonl(request_ip.s_addr) <= htonl(conf.dhcp_end_ip.s_addr))) 
+        {
+                dbg("Requested Ip is in Lan range provided during pmip run .\n");
 		return 1;
 	} else {
 		dbg("Requested Ip is not Lan range provided during pmip run. Dont Send PBU\n");
@@ -371,10 +372,13 @@ int mag_fsm_v4(msg_info_t * info)
 
 	memset (&prefix,0,sizeof (struct in_addr));
 	char command[MAX_DHCP_COMMAND_STR_LEN] = {0};
-	char buff[200]= {0};
-	char temp[100]={0};
+	char buff[400]= {0};
+	char temp[200]={0};
 	int isprimdnsvalid = 0;
 	int issecdnsvalid = 0;
+        char buff1[200]= {0};
+        char kill_command[MAX_DHCP_COMMAND_STR_LEN] = {0};
+        struct in_addr temp_addr;
 
 	int type = pmipv4_cache_exists(&conf.OurAddress, &hw_address);
 
@@ -505,12 +509,12 @@ int mag_fsm_v4(msg_info_t * info)
 								snprintf (command,MAX_DHCP_COMMAND_STR_LEN,"echo > %s",PMIP_DHCP_RESER_FILE);
 								pmip_system_call(command,strlen(command),1);
 
-								snprintf (command,MAX_DHCP_COMMAND_STR_LEN ,"dnsmasq -i %s -I lo -z --dhcp-range=%s,%s,static,%s,43200 --dhcp-hostsfile=%s ",BRIDGE_IFACE,BRIDGE_IFACE,home_prefix,inet_ntoa(conf.dhcp_sub_mask), PMIP_DHCP_RESER_FILE);
-								if (conf.PrimaryV4Dns.s_addr != 0)
+   					                        snprintf (command,MAX_DHCP_COMMAND_STR_LEN ,"dnsmasq -i %s -I lo -z --dhcp-range=%s,%s,static,%s,43200 --dhcp-hostsfile=%s -x /var/run/data/dnsmasq.pid --dhcp-leasefile=/var/run/data/dnsmasq.leases ",BRIDGE_IFACE,BRIDGE_IFACE,home_prefix,inet_ntoa(conf.dhcp_sub_mask), PMIP_DHCP_RESER_FILE);
+                                                                if (conf.PrimaryV4Dns.s_addr != 0)
 								{
 									isprimdnsvalid = 1;
 									dbg("primary ipv4 dns is configured\n");
-									snprintf(buff,200, " --dhcp-option-force=6,%s",inet_ntoa(conf.PrimaryV4Dns) );
+									snprintf(buff,400, " --dhcp-option-force=6,%s",inet_ntoa(conf.PrimaryV4Dns) );
 								}
 								if (conf.SecondaryV4Dns.s_addr != 0)
 								{
@@ -524,7 +528,7 @@ int mag_fsm_v4(msg_info_t * info)
 									else //only secondary dns
 									{
 										dbg("Only Secondary ipv4 dns is configured\n");
-										snprintf(buff,200, " --dhcp-option-force=6,%s  ",inet_ntoa(conf.SecondaryV4Dns) );
+										snprintf(buff,400, " --dhcp-option-force=6,%s  ",inet_ntoa(conf.SecondaryV4Dns) );
 									}
 								}
 								if (!isprimdnsvalid && !issecdnsvalid)
@@ -540,21 +544,35 @@ int mag_fsm_v4(msg_info_t * info)
 								{
 									pmip_add_dnsmasq_v6dns_option(command);
 								}
-								system("killall -1 dnsmasq");
-								system("killall -15 dnsmasq");
-								system("killall -9 dnsmasq");
+
+                                                                dbg("Kiiling dnsmasq . & start dnsmasq to not provide any ip\n");
+                                                                snprintf( kill_command, 200, "kill -1 $(cat /var/run/data/dnsmasq.pid)");
+                                                                pmip_system_call(kill_command, strlen(kill_command),1);
+
+                                                                snprintf( kill_command, 200, "kill -15 $(cat /var/run/data/dnsmasq.pid)");
+                                                                pmip_system_call(kill_command, strlen(kill_command),1);
+
+                                                                snprintf( kill_command, 200, "kill -9 $(cat /var/run/data/dnsmasq.pid)");
+                                                                pmip_system_call(kill_command, strlen(kill_command),1);
+
 								pmip_system_call(command,strlen(command),1);
 								conf.is_dnsmasq_started_on_pba = 1;
 								#if 0 //commenting this Code sine currenly DMNP prefix not being used
 								if (info->hasipv4_default_router_option) {
 									dbg("BCE_TEMP Got hasipv4_default_router_option router %s \n",inet_ntoa(info->default_router));
-									snprintf(buff,200, " --dhcp-option-force=6,%s  ",inet_ntoa(conf.PrimaryDns) );
+									snprintf(buff,400, " --dhcp-option-force=6,%s  ",inet_ntoa(conf.PrimaryDns) );
 									strcat(command,buff);
 									dbg("dnamsq command=%s= for starting dnsmasq\n",command);
-									system("killall -1 dnsmasq");
-									system("killall -15 dnsmasq");
-									system("killall -9 dnsmasq");
-									system (command);
+                                                                        dbg("Kiiling dnsmasq . & start dnsmasq to not provide any ip\n");
+                                                                        snprintf( kill_command, 200, "kill -1 $(cat /var/run/data/dnsmasq.pid)");
+                                                                        pmip_system_call(kill_command, strlen(kill_command),1);
+
+                                                                        snprintf( kill_command, 200, "kill -15 $(cat /var/run/data/dnsmasq.pid)");
+                                                                        pmip_system_call(kill_command, strlen(kill_command),1);
+
+                                                                        snprintf( kill_command, 200, "kill -9 $(cat /var/run/data/dnsmasq.pid)");
+                                                                        pmip_system_call(kill_command, strlen(kill_command),1);
+                                                                        system (command);
 
 									//add same network Ip to bridge to all dhcp range to be working
 									netwok_ip= get_same_network_ip(conf.dhcp_start_ip, conf.dhcp_sub_mask);
@@ -609,10 +627,11 @@ int mag_fsm_v4(msg_info_t * info)
 							dbg("Saving MN v4 ip so that while Sending next PBU this can be used\n");
 							bce->dhcp_requested_ip = bce->mnv4_addr;
 							snprintf(command, MAX_DHCP_COMMAND_STR_LEN,"echo %s,%s >> %s",macStr,inet_ntoa(info->v4_home_prefix),PMIP_DHCP_RESER_FILE);
-							pmip_system_call(command,strlen(command),1);
+                                                        pmip_system_call(command,strlen(command),1);
 							//sending signal to dnsmasq to re-read hosts file
-							system("killall -1 dnsmasq");
-						}
+							
+              	                                        snprintf( kill_command, 200, "kill -1 $(cat /var/run/data/dnsmasq.pid)");
+                                                        pmip_system_call(kill_command, strlen(kill_command),1);}
 					}
 					if (info->hasipv4_default_router_option) {
 						dbg("BCE_TEMP Got hasipv4_default_router_option router %s \n",inet_ntoa(info->default_router));

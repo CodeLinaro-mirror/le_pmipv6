@@ -216,8 +216,11 @@ int main(int argc, char **argv)
 	int logflags = 0;
 	int ret = 1;
 	struct in_addr sa;
-	char command[MAX_DHCP_COMMAND_STR_LEN] = {0};
-
+        char command[MAX_DHCP_COMMAND_STR_LEN] = {0};
+        char kill_command[MAX_DHCP_COMMAND_STR_LEN] = {0};
+        struct in_addr temp;
+        char buff[200]= {0};
+        char start_ip_char[100]={0}, end_ip_char[100]={0};
 	debug_init();
 
 	//handling signal
@@ -356,17 +359,26 @@ int main(int argc, char **argv)
 	if (is_mag() && (conf.pmip_mode_type == IP_FAMILY_V4_V01 || conf.pmip_mode_type == IP_FAMILY_V4V6_V01)) {
 		dbg("pmip mode is v4 start dhcp deamon\n");
 		//start dnsmasq for ipv4
-		dbg("Kiiling dnsmasq . & start dnsmasq to not provide any ip\n");
-		system("killall -1 dnsmasq");
-		system("killall -15 dnsmasq");
-		system("killall -9 dnsmasq");
-		ret = getifaceip(&sa, BRIDGE_IFACE);
+                dbg("Kiiling dnsmasq . & start dnsmasq to not provide any ip\n");
+                snprintf( kill_command, 200, "kill -1 $(cat /var/run/data/dnsmasq.pid)");
+                pmip_system_call(kill_command, strlen(kill_command),1);
+                snprintf( kill_command, 200, "kill -9 $(cat /var/run/data/dnsmasq.pid)");
+                pmip_system_call(kill_command, strlen(kill_command),1);
+                snprintf( kill_command, 200, "kill -15 $(cat /var/run/data/dnsmasq.pid)");
+                pmip_system_call(kill_command, strlen(kill_command),1);
+		
+                ret = getifaceip(&sa, BRIDGE_IFACE);
 		if (ret == 0) {
 			//clear DHCP reservation file
 			snprintf (command,MAX_DHCP_COMMAND_STR_LEN,"echo > %s",PMIP_DHCP_RESER_FILE);
 			pmip_system_call(command,strlen(command),1);
+			temp.s_addr = conf.dhcp_end_ip.s_addr;
+			memcpy(start_ip_char, inet_ntoa(sa), strlen(inet_ntoa(sa)));
+            dbg("start_ip_char : %s \n", start_ip_char);
+			memcpy(end_ip_char, inet_ntoa(temp), strlen(inet_ntoa(temp)));
+            dbg("start_ip_char : %s \n", end_ip_char);
+            snprintf (command,MAX_DHCP_COMMAND_STR_LEN,"dnsmasq -i %s -I lo -z --dhcp-hostsfile=%s --dhcp-option-force=6,%s --dhcp-option-force=3,%s --dhcp-range=%s,%s,%s,255.255.254.0,43200 -x /var/run/data/dnsmasq.pid --dhcp-leasefile=/var/run/data/dnsmasq.leases",BRIDGE_IFACE,PMIP_DHCP_RESER_FILE,start_ip_char,start_ip_char,BRIDGE_IFACE,start_ip_char,end_ip_char);
 
-			snprintf (command,MAX_DHCP_COMMAND_STR_LEN,"dnsmasq -i %s -I lo -z --dhcp-range=%s,%s,static,255.255.255.0,43200 --dhcp-hostsfile=%s --dhcp-option-force=6,%s --dhcp-option-force=3,%s",BRIDGE_IFACE,BRIDGE_IFACE,inet_ntoa(sa),PMIP_DHCP_RESER_FILE,inet_ntoa(sa),inet_ntoa(sa));
 			if (conf.pmip_mode_type == IP_FAMILY_V4V6_V01)
 			{
 				dbg ("Add dnsmasq ipv6 dnsoption\n");

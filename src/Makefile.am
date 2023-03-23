@@ -1,7 +1,7 @@
 ## $Id: Makefile.am 1.55 06/05/07 17:37:11+03:00 anttit@tcs.hut.fi $
 ## Process this file with automake to produce Makefile.in
 
-AM_CFLAGS = -Wall -g -Wpointer-arith -Wreturn-type -pedantic -std=gnu99 -DUSE_RADIUS -DCACHE_RADIUS
+AM_CFLAGS = -Wall -g -Wpointer-arith -Wreturn-type -pedantic -std=gnu99
 ## Uncomment if DHCPV6 packet needed to send to Tunnel
 #AM_CFLAGS += -DFORWARD_DHCPV6_TO_TUNNEL
 ## Uncomment below line if pmip packet for v6 should have udp header with port 5436
@@ -23,10 +23,10 @@ EXTRA_DIST = mk-pmgr_c.sh mk-pmgr_h.sh pmgr.c.in pmgr.h.in
 
 sbin_PROGRAMS = pmip6d
 
-pmip6d_SOURCES = pmgr.c pmgr.h defpath.h \
+pmip6d_SOURCES = gram.y pmgr.c pmgr.h defpath.h \
 		main.c vars.c mipv6.h \
 		conf.c conf.h \
-		gram.y scan.l \
+		scan.l \
 		tqueue.c tqueue.h \
 		icmp6.c icmp6.h \
 		list.h util.h \
@@ -88,7 +88,7 @@ if BUILTIN_CRYPTO
 pmip6d_SOURCES += crypto.c crypto.h
 endif
 
-pmip6d_LDADD =  -lpcap  -lfreeradius-client
+pmip6d_LDADD =  -lpcap
 
 if MISSING
 pmip6d_LDADD += -L../libmissing -lmissing

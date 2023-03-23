@@ -11,9 +11,8 @@
 #define PMIP_RESERVED_PORT 5436
 #define MAX_COMMAND_STRING_LEN 500
 #define PMIP_INVALID_ID_STRING "-1"
-#define PMIP_DHCP_RESER_FILE "/data/pmip_dhcp_hosts"
-#define PMIP_ROUTE_TABLE "/data/iproute2/rt_tables"
-
+#define PMIP_DHCP_RESER_FILE "/etc/data/dhcp_hosts"
+#define PMIP_ROUTE_TABLE "/etc/data/iproute2/rt_tables"
 
 typedef enum {
 	IP_FAMILY_V4_V01 = 0x04, /**<  IPv4 version  */

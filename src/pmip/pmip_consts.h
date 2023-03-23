@@ -91,7 +91,7 @@
 #    define hasPBREQ        0x00000002  /* Has a PBRR */
 #    define hasPBRES        0x00000001  /* Has a PBRE */
 #    define PREFIX_LENGTH   64
-
+#    define TEMP_SED_INPLACE_FILE "/var/run/pmip/sed_inplace"
 
 #endif
 /** @}*/

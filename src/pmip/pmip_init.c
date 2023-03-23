@@ -146,7 +146,9 @@ void pmip_cleanup(void)
 	//---------------------------------------------------------------------------------------------------------------------
 {
 	char command[MAX_DHCP_COMMAND_STR_LEN] = {0};
-	dbg("pmip cleanup...\n");
+        char del_entry[200];
+        int result = -1;
+        dbg("pmip cleanup...\n");
 	if ((conf.pmip_mode_type == IP_FAMILY_V6_V01) || (conf.pmip_mode_type == IP_FAMILY_V4V6_V01))
 	{
 		//Release the pmip cache ==> deletes the routes and rules and "default route on PMIP" and tunnels created.
@@ -177,10 +179,23 @@ void pmip_cleanup(void)
 	}
 
 	//Remove the pmipv4 table from iproute2
+        //replacement for sed -i by doing cat and then cp.
 	dbg("Remove the pmipv4 table from iproute2\n");
-	snprintf (command,MAX_DHCP_COMMAND_STR_LEN,"sed -i /'201 pmipv4'/d %s", PMIP_ROUTE_TABLE);
-	pmip_system_call(command,strlen(command),1);
 
+        snprintf(del_entry, 200,"sed /'201 pmipv4'/d %s",PMIP_ROUTE_TABLE);
+        snprintf(command, MAX_DHCP_COMMAND_STR_LEN,"%s > %s", del_entry, TEMP_SED_INPLACE_FILE);
+        result = pmip_system_call(command, strlen(command),1);
+        if (result == -1)
+        {
+            snprintf(command, MAX_DHCP_COMMAND_STR_LEN,"rm  %s", TEMP_SED_INPLACE_FILE);
+            pmip_system_call(command, strlen(command),1);
+            dbg("command failed: result %d", result);
+            return ;
+        }
+        snprintf(command, MAX_DHCP_COMMAND_STR_LEN,"cp %s %s", TEMP_SED_INPLACE_FILE, PMIP_ROUTE_TABLE);
+        result = pmip_system_call(command, strlen(command),1);
+        snprintf(command, MAX_DHCP_COMMAND_STR_LEN,"rm  %s", TEMP_SED_INPLACE_FILE);
+        pmip_system_call(command, strlen(command),1);
 	system("echo 'pmip: termination completed' > /dev/kmsg");
 
 	//#undef HAVE_PCAP_BREAKLOOP

@@ -48,6 +48,7 @@
 #endif
 #include <pthread.h>
 #include <netinet/in.h>
+#include <netinet/ip.h>
 #include <netinet/ip6.h>
 #include <errno.h>
 #include <unistd.h>

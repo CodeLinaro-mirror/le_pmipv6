@@ -40,9 +40,10 @@
 #include "debug.h"
 #include "conf.h"
 
-#define QCMAP_PMIP_FILE "/data/qcmap_pmip_file"
-#define PMIP_QCMAP_FILE "/data/pmip_qcmap_file"
-#define PMIP_QCMAP_IND_FILE "/data/pmip_qcmap_ind_file"
+#define QCMAP_PMIP_FILE "/dev/socket/data/qcmap_pmip_file"
+#define PMIP_QCMAP_FILE "/dev/socket/pmip/pmip_qcmap_file"
+#define PMIP_QCMAP_IND_FILE "/dev/socket/pmip/pmip_qcmap_ind_file"
+
 #define false 0
 #define true  1
 
@@ -108,7 +109,10 @@ void pmip_pcap_msg_handler_deassociate(struct in6_addr mn_iidP, int iifP)
 	char command[200];
 	uint8_t mac[PMIP_MAC_ADDR_LEN];
 	char macStr[MAC_ADDR_NUM_CHARS];
-	dbg("pmip_pcap_msg_handler_desassociate()\n");
+	char del_entry[200] = {0};
+        char kill_command[MAX_DHCP_COMMAND_STR_LEN] = {0};
+        int result = -1;
+        dbg("pmip_pcap_msg_handler_desassociate()\n");
 	msg_info_t msg;
 	memset(&msg, 0, sizeof(msg_info_t));
 	//   msg.mn_iid = EUI48_to_EUI64(mn_iidP);
@@ -125,10 +129,26 @@ void pmip_pcap_msg_handler_deassociate(struct in6_addr mn_iidP, int iifP)
 		dbg("-------------------pmip_pcap_msg_handler_deassociate-----------------------\n");
 		dbg("pmip_pcap_msg_handler_deassociate mac address : %02x:%02x:%02x:%02x:%02x:%02x\n", mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
 		mac_addr_ntop(mac, (char *)&macStr);
-		snprintf(command, 200,"sed -i '/%s/d' %s",macStr,PMIP_DHCP_RESER_FILE);
-		pmip_system_call(command,strlen(command),1);
-		dbg("SIGUP signal send to dnsmasq\n");
-		system ("killall -1 dnsmasq");
+                //replacement for sed -i by doing cat and then cp.
+                snprintf(del_entry, 200,"sed '/%s/d' %s",macStr,PMIP_DHCP_RESER_FILE);
+                snprintf(command, 200,"%s > %s", del_entry, TEMP_SED_INPLACE_FILE);
+                result = pmip_system_call(command, strlen(command),1);
+                if (result == -1)
+                {
+                    snprintf(command, 200,"rm  %s", TEMP_SED_INPLACE_FILE);
+                    pmip_system_call(command, strlen(command),1);
+                    dbg("command failed: result %d", result);
+                    return ;
+                }
+                snprintf(command, 200,"cp %s %s", TEMP_SED_INPLACE_FILE, PMIP_DHCP_RESER_FILE);
+                result = pmip_system_call(command, strlen(command),1);
+                snprintf(command, 200,"rm  %s", TEMP_SED_INPLACE_FILE);
+                pmip_system_call(command, strlen(command),1);
+
+                dbg("SIGUP signal send to dnsmasq\n");
+                dbg("Kiiling dnsmasq . & start dnsmasq to not provide any ip\n");
+                snprintf( kill_command, 200, "kill -1 $(cat /var/run/data/dnsmasq.pid)");
+                pmip_system_call(kill_command, strlen(kill_command),1);
     mag_fsm_v4(&msg);
 	}
 }
@@ -290,7 +310,8 @@ int pmip_send_qcmap_dev_query
 		send_dev_info.dev_info.isValidMac= true;
 		ipv6_to_mac(hw_addr, send_dev_info.dev_info.mac_addr);
 		dbg("---pmip_send_qcmap_dev_query mac to send: %02x:%02x:%02x:%02x:%02x:%02x\n", send_dev_info.dev_info.mac_addr[0],send_dev_info.dev_info.mac_addr[1],send_dev_info.dev_info.mac_addr[2],send_dev_info.dev_info.mac_addr[3],send_dev_info.dev_info.mac_addr[4],send_dev_info.dev_info.mac_addr[5]);
-
+        //Temporary fix for late CDI update on available device
+         sleep(7);
 	send_dev_info.pmip_event = QCMAP_PMIP_QUERY_DEVICE_REQ;
 	if ((numBytes = sendto(qcmap_pmip_sockfd, (void *)&send_dev_info, sizeof(qcmap_pmip_sock_msg_t), 0,
 					(struct sockaddr *)&qcmap_pmip, len)) == -1)
@@ -362,6 +383,7 @@ void pmip_pcap_loop(char *devname, int iif)
 	char buf[MAX_BUF_LEN];
 	struct in6_addr hw_address;
 	char mac_addr_str[PMIP_MAC_ADDR_LEN];
+        char command[100]={0};
 
 	int ret;
 	fd_set fds;
@@ -393,6 +415,11 @@ void pmip_pcap_loop(char *devname, int iif)
 	{
 		dbg("Unable to create pmip_qcmap_ind_sockfd socket! errno:%d\n", errno,0,0);
 	}
+
+        snprintf(command, 100,"chmod 766 %s", PMIP_QCMAP_IND_FILE);
+        pmip_system_call(command,strlen(command),1);
+        snprintf(command, 100,"chmod 766 %s", PMIP_QCMAP_FILE);
+        pmip_system_call(command,strlen(command),1);
 
 	FD_ZERO(&fds);
 	FD_SET(pmip_qcmap_ind_sockfd, &fds);

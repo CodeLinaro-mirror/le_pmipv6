@@ -310,8 +310,6 @@ int pmip_send_qcmap_dev_query
 		send_dev_info.dev_info.isValidMac= true;
 		ipv6_to_mac(hw_addr, send_dev_info.dev_info.mac_addr);
 		dbg("---pmip_send_qcmap_dev_query mac to send: %02x:%02x:%02x:%02x:%02x:%02x\n", send_dev_info.dev_info.mac_addr[0],send_dev_info.dev_info.mac_addr[1],send_dev_info.dev_info.mac_addr[2],send_dev_info.dev_info.mac_addr[3],send_dev_info.dev_info.mac_addr[4],send_dev_info.dev_info.mac_addr[5]);
-        //Temporary fix for late CDI update on available device
-         sleep(7);
 	send_dev_info.pmip_event = QCMAP_PMIP_QUERY_DEVICE_REQ;
 	if ((numBytes = sendto(qcmap_pmip_sockfd, (void *)&send_dev_info, sizeof(qcmap_pmip_sock_msg_t), 0,
 					(struct sockaddr *)&qcmap_pmip, len)) == -1)

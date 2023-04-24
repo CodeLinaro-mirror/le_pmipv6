@@ -23,10 +23,10 @@ EXTRA_DIST = mk-pmgr_c.sh mk-pmgr_h.sh pmgr.c.in pmgr.h.in
 
 sbin_PROGRAMS = pmip6d
 
-pmip6d_SOURCES = gram.y pmgr.c pmgr.h defpath.h \
+pmip6d_SOURCES = pmgr.c pmgr.h defpath.h \
 		main.c vars.c mipv6.h \
 		conf.c conf.h \
-		scan.l \
+		gram.c gram.h scan.l \
 		tqueue.c tqueue.h \
 		icmp6.c icmp6.h \
 		list.h util.h \

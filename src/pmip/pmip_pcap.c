@@ -193,7 +193,6 @@ void ipv6_to_mac(const struct in6_addr * mac_v6, uint8_t *mac)
 
 void mac_addr_ntop(const uint8_t *mac, char *mac_addr_str)
 {
-	dbg("mac_addr_ntop\n");
 	memset(mac_addr_str,0,(size_t)MAC_ADDR_NUM_CHARS);
 	snprintf(mac_addr_str,(size_t)MAC_ADDR_NUM_CHARS,"%02x:%02x:%02x:%02x:%02x:%02x",
 			mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
@@ -452,9 +451,6 @@ void pmip_pcap_loop(char *devname, int iif)
 			{
 				continue;
 			}
-                        dbg(" QCMAP_PMIP_DEL_DEVICE \n",0, 0, 0);
-
-			dbg("--- QCMAP_PMIP_DEL_DEVICE mac to send: %02x:%02x:%02x:%02x:%02x:%02x\n", send_dev_info->dev_info.mac_addr[0],send_dev_info->dev_info.mac_addr[1],send_dev_info->dev_info.mac_addr[2],send_dev_info->dev_info.mac_addr[3],send_dev_info->dev_info.mac_addr[4],send_dev_info->dev_info.mac_addr[5]);
 
 			mac_addr_ntop((uint8_t *)send_dev_info->dev_info.mac_addr, (char *)&mac_addr_str);
 

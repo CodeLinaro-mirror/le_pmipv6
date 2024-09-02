@@ -94,38 +94,59 @@ static int create_opt_pad(struct iovec *iov, int pad)
 	if (pad == 2) {
 		//iov->iov_base = (void *) _pad2;
 		iov->iov_base = malloc(sizeof(_pad2));
-		memcpy(iov->iov_base, _pad2, sizeof(_pad2));
+		if (iov->iov_base != NULL)
+		{
+			memcpy(iov->iov_base, _pad2, sizeof(_pad2));
+		}
 	}
 	else if (pad == 4) {
 		//iov->iov_base = (void *) _pad4;
 		iov->iov_base = malloc(sizeof(_pad4));
-		memcpy(iov->iov_base, _pad4, sizeof(_pad4));
+		if (iov->iov_base != NULL)
+		{
+			memcpy(iov->iov_base, _pad4, sizeof(_pad4));
+		}
 	}
 	else if (pad == 6) {
 		//iov->iov_base = (void *) _pad6;
 		iov->iov_base = malloc(sizeof(_pad6));
-		memcpy(iov->iov_base, _pad6, sizeof(_pad6));
+		if (iov->iov_base != NULL)
+		{
+			memcpy(iov->iov_base, _pad6, sizeof(_pad6));
+		}
 	}
 	/* Odd pads do not occur with current spec, so test them last */
 	else if (pad == 1) {
-		iov->iov_base = (void *) _pad1;
+		//iov->iov_base = (void *) _pad1;
 		iov->iov_base = malloc(sizeof(_pad1));
-		memcpy(iov->iov_base, _pad1, sizeof(_pad1));
+		if (iov->iov_base != NULL)
+		{
+			memcpy(iov->iov_base, _pad1, sizeof(_pad1));
+		}
 	}
 	else if (pad == 3) {
 		//iov->iov_base = (void *) _pad3;
 		iov->iov_base = malloc(sizeof(_pad3));
-		memcpy(iov->iov_base, _pad3, sizeof(_pad3));
+		if (iov->iov_base != NULL)
+		{
+			memcpy(iov->iov_base, _pad3, sizeof(_pad3));
+		}
 	}
 	else if (pad == 5) {
 		//iov->iov_base = (void *) _pad5;
 		iov->iov_base = malloc(sizeof(_pad5));
-		memcpy(iov->iov_base, _pad5, sizeof(_pad5));
+		if (iov->iov_base != NULL)
+		{
+			memcpy(iov->iov_base, _pad5, sizeof(_pad5));
+		}
 	}
 	else if (pad == 7) {
 		//iov->iov_base = (void *) _pad7;
 		iov->iov_base = malloc(sizeof(_pad7));
-		memcpy(iov->iov_base, _pad7, sizeof(_pad7));
+		if (iov->iov_base != NULL)
+		{
+			memcpy(iov->iov_base, _pad7, sizeof(_pad7));
+		}
 	}
 	iov->iov_len = pad;
 	return 0;

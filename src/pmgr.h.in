@@ -11,6 +11,12 @@
 #include <limits.h>
 #include "policy.h"
 
+#ifdef USE_GLIB                                                                                                                                                                                                                                                                         #include <glib.h>
+#define strlcpy g_strlcpy
+#define strlcat g_strlcat
+#endif
+
+
 struct pmgr_cb {
 /* ##INSERT_FUNCTIONPOINTERS## */
         int (*best_iface) (const struct in6_addr * hoa,

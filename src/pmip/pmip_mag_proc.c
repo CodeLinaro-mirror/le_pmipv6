@@ -558,7 +558,10 @@ int mag_kickoff_ra(pmip_entry_t * bce, int send_deprecate_ra)
 {
 	struct in6_addr *src;
 	src = malloc(sizeof(struct in6_addr));
-	memset(src, 0, sizeof(struct in6_addr));
+	if (src != NULL)
+	{
+		memset(src, 0, sizeof(struct in6_addr));
+	}
 	struct iovec iov;
 	struct nd_router_advert *radvert;
 	adv_prefix_t prefix;
@@ -758,7 +761,7 @@ int mag_get_ingress_info(int *if_index, char *dev_name_mn_link)
 			addr.s6_addr[i] = (unsigned char) ap;
 		}
 		if (memcmp(&conf.MagAddressIngress, &addr, sizeof(struct in6_addr)) == 0) {
-			strncpy(dev_name_mn_link, devname, 32);
+			strlcpy(dev_name_mn_link, devname, 32);
 			*if_index = if_idx;
 			dbg("The interface name of the device that is used for communicate with MNs is %s\n", dev_name_mn_link);
 			fclose(fp);
@@ -780,7 +783,7 @@ int setup_linklocal_addr(struct in6_addr *src)
 	int i;
 	int flagy = 0;
 	char devname[32];
-	char dev_name_mn_link[32];
+	char dev_name_mn_link[32] = {0};
 	if ((fp = fopen("/proc/net/if_inet6", "r")) == NULL) {
 		dbg("you don't have root previleges, please logon as root, can't open %s:", "/proc/net/if_inet6");
 		return -1;
@@ -792,7 +795,7 @@ int setup_linklocal_addr(struct in6_addr *src)
 			addr.s6_addr[i] = (unsigned char) ap;
 		}
 		if (memcmp(&conf.MagAddressIngress, &addr, sizeof(struct in6_addr)) == 0) {
-			strncpy(dev_name_mn_link, devname, 32);
+			strlcpy(dev_name_mn_link, devname, 32);
 			flagy = 1;
 			dbg("The interface name of the device that is used for communicate with MNs is %s\n", dev_name_mn_link);
 			break;
@@ -901,6 +904,7 @@ int mag_update_binding_entry_with_DMNP_Home_addr(pmip_entry_t * bce, msg_info_t 
 		bce->dmnp_prefix_len= info->dmnp_prefix_len;
 		dbg("has DMNP \n");
 	}
+	return 0;
 }
 
 

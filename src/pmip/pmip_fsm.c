@@ -70,7 +70,7 @@ int mag_fsm(msg_info_t * info)
 {
 	int result = 0;
 	int aaa_result = 0;
-	pmip_entry_t *bce;
+	pmip_entry_t *bce = NULL;
 	struct in6_addr prefix;
 	struct in6_addr hw_address = info->mn_hw_address;
 	int type = pmip_cache_exists(&conf.OurAddress, &hw_address);
@@ -138,7 +138,7 @@ int mag_fsm(msg_info_t * info)
 			dbg("BCE_TEMP\n");
 			if (info->msg_event == hasPBA) {
 				bce = pmip_cache_get(&conf.OurAddress, &hw_address);
-				if (is_pba_is_response_to_valid_pbu_seq_number(info, bce)) {
+				if (bce && is_pba_is_response_to_valid_pbu_seq_number(info, bce)) {
 					dbg("Handling PBA. Moving from BCE_TEMP to BCE_PMIP\n");
 					dbg("Finish Location Registration\n");
 					//Modify the entry with additional info.
@@ -181,7 +181,7 @@ int mag_fsm(msg_info_t * info)
 				dbg("RA sent after router solicitation ...\n");
 			} else if (info->msg_event == hasPBA) {
 				bce = pmip_cache_get(&conf.OurAddress, &hw_address);
-				if (is_pba_is_response_to_valid_pbu_seq_number(info, bce)) {
+				if (bce && is_pba_is_response_to_valid_pbu_seq_number(info, bce)) {
 					dbg("Finish Location Registration\n");
 					//Modify the entry with additional info.
 					del_task(&bce->tqe);    //Delete timer retransmission PBU (if any)
@@ -209,8 +209,11 @@ int mag_fsm(msg_info_t * info)
 			} else if (info->msg_event == hasWLCCP) {
 				dbg("Incomming MN is detected by Wireless Access Point, existing MN\n");
 				bce = pmip_cache_get(&conf.OurAddress, &hw_address);
-				dbg("Prefix before entering kickoff_ra : %x:%x:%x:%x:%x:%x:%x:%x \n", NIP6ADDR(&bce->mn_prefix));
-				mag_kickoff_ra(bce, 0);
+				if (bce != NULL)
+				{
+					dbg("Prefix before entering kickoff_ra : %x:%x:%x:%x:%x:%x:%x:%x \n", NIP6ADDR(&bce->mn_prefix));
+					mag_kickoff_ra(bce, 0);
+				}
 				// Some case where the access point did not detect the departure of the mobile node
 				// so we have to register again to the LMA
 				mag_force_update_registration(bce, info->iif, 0);
@@ -220,9 +223,12 @@ int mag_fsm(msg_info_t * info)
 				dbg("Deregistration procedure detected by Wireless Access Point for a registered MN\n");
 				dbg("Start Location Deregistration\n");
 				bce = pmip_cache_get(&conf.OurAddress, &hw_address);
-				mag_dereg(bce, 1, 0);
-				pmipcache_release_entry(bce);
-				pmip_bce_delete(bce);
+				if (bce != NULL)
+				{
+					mag_dereg(bce, 1, 0);
+					pmipcache_release_entry(bce);
+					pmip_bce_delete(bce);
+				}
 			} else if (info->msg_event == hasNA) {
 				//Reset counter, Delete task for entry deletion  & Add a new task for NS expiry.
 				bce = pmip_cache_get(&conf.OurAddress, &hw_address);
@@ -472,7 +478,7 @@ int mag_fsm_v4(msg_info_t * info)
 			if (info->msg_event == hasPBA) {
 				dbg("Recieved PBA from LMA for ipv4 after sending PBU\n");
 				bce = pmipv4_cache_get(&conf.OurAddress, &hw_address);
-				if (is_pba_is_response_to_valid_pbu_seq_number(info, bce)) {
+				if (bce && is_pba_is_response_to_valid_pbu_seq_number(info, bce)) {
 					//Checking for DMNP prefix verification
 					//Skiping for now
 					#if 0
@@ -677,7 +683,7 @@ int mag_fsm_v4(msg_info_t * info)
 				dbg("BCE_PMIP has PBA\n");
 
 				bce = pmipv4_cache_get(&conf.OurAddress, &hw_address);
-				if (is_pba_is_response_to_valid_pbu_seq_number(info, bce)) {
+				if (bce && is_pba_is_response_to_valid_pbu_seq_number(info, bce)) {
 					dbg("Finish Location Registration\n");
 					//Modify the entry with additional info.
 					del_task(&bce->tqe);    //Delete timer retransmission PBU (if any)
@@ -709,9 +715,12 @@ int mag_fsm_v4(msg_info_t * info)
 				dbg("Start Location Deregistration\n");
 
 				bce = pmipv4_cache_get(&conf.OurAddress, &hw_address);
-				mag_dereg(bce, 1, 1);
-				pmipv4cache_release_entry(bce);
-				pmipv4_bce_delete(bce);
+				if (bce != NULL)
+				{
+					mag_dereg(bce, 1, 1);
+					pmipv4cache_release_entry(bce);
+					pmipv4_bce_delete(bce);
+				}
 
 			}  else if (info->msg_event == hasARPReply) {
 				dbg("Has ARP reply\n");
@@ -787,7 +796,7 @@ int lma_fsm(msg_info_t * info)
 				bce = pmip_cache_get(&conf.OurAddress, &hw_address);
 				memset(&r_tmp1, 0, sizeof(struct in6_addr));
 				//if v6 serving Mag
-				if(conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
+				if(bce && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
 				{
 				if (IN6_ARE_ADDR_EQUAL(&r_tmp1, &bce->mn_serv_mag_addr)) //Received PBU from serving MAG
 				{
@@ -806,7 +815,7 @@ int lma_fsm(msg_info_t * info)
 				}
 				}
 				//if v4 serving mag
-				if  (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
+				if  (bce && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
 				{
 				if (bce->mn_serv_mag_v4_addr.s_addr == 0) //Received PBU from serving MAG
 				{
@@ -829,7 +838,7 @@ int lma_fsm(msg_info_t * info)
 			else if (info->msg_event == hasPBU && info->lifetime.tv_sec == 0 && info->lifetime.tv_nsec == 0) {
 				dbg("PBU with Lifetime = 0... start Location Deregistration\n");
 				bce = pmip_cache_get(&conf.OurAddress, &hw_address);
-				if (IN6_ARE_ADDR_EQUAL(&info->src, &bce->mn_serv_mag_addr)) //Received PBU from serving MAG
+				if (bce && IN6_ARE_ADDR_EQUAL(&info->src, &bce->mn_serv_mag_addr)) //Received PBU from serving MAG
 				{
 					dbg("Deregistration case...\n");
 					lma_dereg(bce, info, 1, 0);
@@ -890,7 +899,7 @@ int lma_fsm_v4(msg_info_t * info)
 				bce = pmipv4_cache_get(&conf.OurAddress, &hw_address);
 				memset(&r_tmp1, 0, sizeof(struct in6_addr));
 				//if v6 serving Mag
-				if(conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
+				if(bce && conf.pmip_tunnel_mode == IP_FAMILY_V6_V01)
 				{
 				if (IN6_ARE_ADDR_EQUAL(&r_tmp1, &bce->mn_serv_mag_addr)) //Received PBU from serving MAG
 				{
@@ -909,7 +918,7 @@ int lma_fsm_v4(msg_info_t * info)
 				}
 				}
 				//if v4 serving mag
-				if  (conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
+				if  (bce && conf.pmip_tunnel_mode == IP_FAMILY_V4_V01)
 				{
 				if (bce->mn_serv_mag_v4_addr.s_addr == 0) //Received PBU from serving MAG
 				{

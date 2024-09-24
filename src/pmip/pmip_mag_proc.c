@@ -697,7 +697,10 @@ int mag_kickoff_ra(pmip_entry_t * bce, int send_deprecate_ra)
 	iov.iov_len = len;
 	iov.iov_base = (caddr_t) buff;
 	int err;
-	err = icmp6_send(bce->link, 255, src, &bce->mn_link_local_addr, &iov, 1);
+	if (src != NULL)
+	{
+		err = icmp6_send(bce->link, 255, src, &bce->mn_link_local_addr, &iov, 1);
+	}
 	if (err < 0) {
 		dbg("Error: couldn't send a RA message ...\n");
 	} else {

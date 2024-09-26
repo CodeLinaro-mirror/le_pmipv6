@@ -221,7 +221,7 @@ static int __tunnel_del(struct mip6_tnl *tnl)
 		struct ifreq ifr;
 		list_del(&tnl->list);
 		hash_delete(&tnl_hash, &tnl->parm.laddr, &tnl->parm.raddr);
-		strcpy(ifr.ifr_name, tnl->parm.name);
+		strlcpy(ifr.ifr_name, tnl->parm.name, sizeof(tnl->parm.name));
 		if ((res = ioctl(tnl_fd, SIOCDELTUNNEL, &ifr)) < 0) {
 			TDBG("SIOCDELTUNNEL failed status %d %s\n",
 					errno, strerror(errno));
@@ -290,7 +290,7 @@ static struct mip6_tnl *__tunnel_add(struct in6_addr *local,
 		tnl->parm.o_flags |= GRE_KEY;
 		tnl->parm.i_key = tnl->parm.o_key = gre_info.gre_key;
 	}
-	strcpy(ifr.ifr_name, basedev);
+	strlcpy(ifr.ifr_name, basedev, sizeof(basedev));
 	ifr.ifr_ifru.ifru_data = (void *)&tnl->parm;
 	if (ioctl(tnl_fd, SIOCADDTUNNEL, &ifr) < 0) {
 		TDBG("SIOCADDTUNNEL failed status %d %s\n",
@@ -301,7 +301,7 @@ static struct mip6_tnl *__tunnel_add(struct in6_addr *local,
 		TDBG("tunnel exists,but isn't used for MIPv6\n");
 		goto err;
 	}
-	strcpy(ifr.ifr_name, tnl->parm.name);
+	strlcpy(ifr.ifr_name, tnl->parm.name, sizeof(tnl->parm.name));
 	if (ioctl(tnl_fd, SIOCGIFFLAGS, &ifr) < 0) {
 		TDBG("SIOCGIFFLAGS failed status %d %s\n",
 				errno, strerror(errno));
@@ -412,7 +412,7 @@ static int __tunnel_mod(struct mip6_tnl *tnl,
 	parm.raddr = *remote;
 	parm.link = link;
 
-	strcpy(ifr.ifr_name, tnl->parm.name);
+	strlcpy(ifr.ifr_name, tnl->parm.name, sizeof(tnl->parm.name));
 	ifr.ifr_ifru.ifru_data = (void *)&parm;
 
 	if(ioctl(tnl_fd, SIOCCHGTUNNEL, &ifr) < 0) {
@@ -672,7 +672,7 @@ static int __tunnelv4_del(struct mip4_tnl *tnl)
 		ipv4_to_ipv6(&tnl->parm.raddr,&remote_v6);
 		ipv4_to_ipv6(&tnl->parm.laddr,&local_v6);
 		hash_delete(&tnlv4_hash, &local_v6, &remote_v6);
-		strcpy(ifr.ifr_name, tnl->parm.name);
+		strlcpy(ifr.ifr_name, tnl->parm.name, sizeof(tnl->parm.name));
 		snprintf (command,100,"ip tunnel delete %s",base4dev);
 		system (command);
 		dbg("Tunnel delete comm %s=\n",command);
@@ -751,7 +751,7 @@ static struct mip4_tnl *__tunnel_addv44(struct in_addr *local,
 	  tnl->parm.o_flags |= GRE_KEY;
 	}
 	//strcpy(tnl->parm.name, "gre0");
-	strcpy(ifr.ifr_name, "gre0");
+	strlcpy(ifr.ifr_name, "gre0", 5);
 
 	ifr.ifr_ifru.ifru_data = (void *)&tnl->parm;
 	if (ioctl(tnl_fd4, SIOCADDTUNNEL, &ifr) < 0) {
@@ -760,7 +760,7 @@ static struct mip4_tnl *__tunnel_addv44(struct in_addr *local,
 	    goto err;
 	}
 dbg("tun name =%s===",tnl->parm.name);
-		strcpy(ifr.ifr_name, tnl->parm.name);
+		strlcpy(ifr.ifr_name, tnl->parm.name, sizeof(tnl->parm.name));
 		if (ioctl(tnl_fd4, SIOCGIFFLAGS, &ifr) < 0) {
 		TDBG("SIOCGIFFLAGS failed status %d %s name =%s=\n",
 		     errno, strerror(errno),ifr.ifr_name);
@@ -838,7 +838,7 @@ static struct mip4_tnl *__tunnel_addv4(struct in_addr *local,
 	{
 		tnl->parm.i_key = tnl->parm.o_key = gre_info.gre_key;
 	}
-	strcpy(tnl->parm.name, base4dev);
+	strlcpy(tnl->parm.name, base4dev, sizeof(base4dev));
 
 	ifac = if_indextoname(link, &interfaceName);
 	if (ifac == NULL)

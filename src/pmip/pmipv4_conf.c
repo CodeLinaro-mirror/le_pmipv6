@@ -82,12 +82,13 @@ int create_send_socket_from_bridge0()
 		dbg("bind failed\n");
 		close(sock);
 	}
+	return 0;
 
 }
 int create_dhcp_arp_listen_socket()
 {
 	int sock,ret;
-	int sockopt;
+	int sockopt = 0;
 	struct ifreq ifopts;	/* set promiscuous mode */
 	sock = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
 	if (sock < 0)
@@ -107,7 +108,7 @@ int create_dhcp_arp_listen_socket()
 		}
 
 		//Set interface to promiscuous mode
-		strncpy(ifopts.ifr_name, BRIDGE_IFACE, strlen(BRIDGE_IFACE)+1);
+		strlcpy(ifopts.ifr_name, BRIDGE_IFACE, strlen(BRIDGE_IFACE)+1);
 		ioctl(sock, SIOCGIFFLAGS, &ifopts);
 		ifopts.ifr_flags |= IFF_PROMISC;
 		ioctl(sock, SIOCSIFFLAGS, &ifopts);
@@ -343,7 +344,7 @@ int dhcp_arp_recv(int sock, unsigned char *buf, size_t msglen,
 //hip
 static void pmip_mag_recv_dhcp_arp(struct pktinfo *pkt_info)
 {
-	int ret;
+	int ret = 0;
 	char command[100];
 	//dbg("\n");
 	//dbg("Main function recieived ARP packet\n");
@@ -431,6 +432,7 @@ int dhcp_cleanup()
 	close(dhcp_arp_sock.fd);
 	pthread_cancel(dhcp_arp_listener);
 	pthread_join(dhcp_arp_listener, NULL);
+	return 0;
 
 }
 

@@ -6,7 +6,9 @@ AM_CFLAGS = -Wall -g -Wpointer-arith -Wreturn-type -pedantic -std=gnu99
 #AM_CFLAGS += -DFORWARD_DHCPV6_TO_TUNNEL
 ## Uncomment below line if pmip packet for v6 should have udp header with port 5436
 #AM_CFLAGS += -DSEND_V6_TO_PMIP_PORT
-AM_CPPFLAGS = -isystem ../include -I../src -I./pmip -I/usr/local/include
+AM_CFLAGS += -DUSE_GLIB @GLIB_CFLAGS@
+AM_LDFLAGS = @GLIB_LIBS@
+AM_CPPFLAGS = -isystem ../include -I../src -I./pmip -I/usr/local/include @GLIB_CFLAGS@
 AM_YFLAGS = -d
 
 defpath.h: Makefile.am

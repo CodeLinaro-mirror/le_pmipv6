@@ -184,7 +184,7 @@ int getifaceip(struct in_addr *addr, char *iface)
 	}
 	/* Set up the interface request buffer for wlan0. */
 	memset(&buffer, 0x00, sizeof(buffer));
-	strcpy(buffer.ifr_name, iface);
+	strlcpy(buffer.ifr_name, iface, sizeof(iface));
 
 	/* Call the ioctl to get the address. */
 	ret = ioctl(s, SIOCGIFADDR, &buffer);

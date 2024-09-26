@@ -586,7 +586,7 @@ int pmip_add_dnsmasq_v6dns_option(char * dhcp_command)
 		{
 			dbg ("Added secondary dns option\n");
 			snprintf(buff, 200,",[%s] ",secdnsaddr);
-			strcat(command,buff);
+			strlcat(command,buff);
 		}
 		else
 		{
@@ -601,7 +601,7 @@ int pmip_add_dnsmasq_v6dns_option(char * dhcp_command)
 		return -1;
 	}
 
-	strcat(dhcp_command, command);
+	strlcat(dhcp_command, command);
 	return 1;
 }
 int pmipv6_start_dnsmasq_with_dhcpv6_option()

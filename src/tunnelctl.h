@@ -2,6 +2,12 @@
 #ifndef __TUNNELCTL_H__
 #define __TUNNELCTL_H__ 1
 
+#ifdef USE_GLIB
+#include <glib.h>
+#define strlcpy g_strlcpy
+#define strlcat g_strlcat
+#endif
+
 typedef struct
 {
 	uint8_t gre_key_valid;

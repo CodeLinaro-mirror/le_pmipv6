@@ -41,7 +41,7 @@
 static void pmgr_init_defaults(struct pmgr_cb *lb)
 {
 	memset(lb, 0, sizeof(struct pmgr_cb));
-	strcpy(lb->so_path, "[internal]");
+	strlcpy(lb->so_path, "[internal]", 11);
 
 /* ##INSERT_DEFAULTS## */
 lb->best_iface = default_best_iface;
@@ -115,9 +115,12 @@ int pmgr_init(char *libpath, struct pmgr_cb *lb)
 	memcpy(old, lb, sizeof(*old));
 	lb->old = old;
 
-	strncpy(lb->so_path, libpath, _POSIX_PATH_MAX);
-	pmgr_init_entrypoints(lb, h);
-	lb->handle = h;
+	strlcpy(lb->so_path, libpath, _POSIX_PATH_MAX);
+	if (h != NULL) 
+	{
+		pmgr_init_entrypoints(lb, h);
+		lb->handle = h;
+	}
 
 	return 0;
 }

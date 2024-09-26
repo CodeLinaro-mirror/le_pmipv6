@@ -194,8 +194,8 @@ void ipv6_to_mac(const struct in6_addr * mac_v6, uint8_t *mac)
 void mac_addr_ntop(const uint8_t *mac, char *mac_addr_str)
 {
 	dbg("mac_addr_ntop\n");
-	memset(mac_addr_str,0,(size_t)MAC_ADDR_NUM_CHARS);
-	snprintf(mac_addr_str,(size_t)MAC_ADDR_NUM_CHARS,"%02x:%02x:%02x:%02x:%02x:%02x",
+	memset(mac_addr_str,0,(size_t)MAC_ADDR_LEN);
+	snprintf(mac_addr_str,(size_t)MAC_ADDR_LEN,"%02x:%02x:%02x:%02x:%02x:%02x",
 			mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
 	return;
 }
@@ -256,7 +256,7 @@ int create_server_socket(unsigned int* sockfd, char* file_path)
 	val = fcntl(*sockfd, F_GETFL, 0);
 	fcntl(*sockfd, F_SETFL, val | O_NONBLOCK);
 	qcmap_un.sun_family = AF_UNIX;
-	strncpy(qcmap_un.sun_path, file_path, sizeof(qcmap_un.sun_path));
+	strlcpy(qcmap_un.sun_path, file_path, sizeof(qcmap_un.sun_path));
 	unlink(qcmap_un.sun_path);
 	len = strlen(qcmap_un.sun_path) + sizeof(qcmap_un.sun_family);
 
@@ -289,10 +289,10 @@ int pmip_send_qcmap_dev_query
 	/*struct in6_addr mn_iid_2;*/
 	char ip6_addr_str[INET6_ADDRSTRLEN];
 	char mac_addr_str[PMIP_MAC_ADDR_LEN];
-	int type;
+	int type = 0;
 
 	qcmap_pmip.sun_family = AF_UNIX;
-	strncpy(qcmap_pmip.sun_path, QCMAP_PMIP_FILE, sizeof(QCMAP_PMIP_FILE));
+	strlcpy(qcmap_pmip.sun_path, QCMAP_PMIP_FILE, sizeof(QCMAP_PMIP_FILE));
 	len = strlen(qcmap_pmip.sun_path) + sizeof(qcmap_pmip.sun_family);
 
 	memset(ip6_addr_str, 0x0, INET6_ADDRSTRLEN);

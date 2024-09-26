@@ -95,7 +95,7 @@ int mag_fsm(msg_info_t * info)
 					dbg("QCMAP Acknowledged Device. Add BCE and send PBU\n");
 					bce = pmip_cache_alloc(BCE_TEMP);
 					prefix = mnid_hnp_map(hw_address, &aaa_result);
-					if (aaa_result >= 0) {
+					if (bce && aaa_result >= 0) {
 						bce->mn_prefix = prefix;
 						bce->mn_suffix = info->mn_iid;
 						bce->mn_hw_address = hw_address;
@@ -115,7 +115,7 @@ int mag_fsm(msg_info_t * info)
 				dbg("Incoming MN is detected by Wireless Access Point, start new registration ...\n\n");
 				bce = pmip_cache_alloc(BCE_TEMP);
 				prefix = mnid_hnp_map(hw_address, &aaa_result);
-				if (aaa_result >= 0) {
+				if (bce && aaa_result >= 0) {
 					bce->mn_prefix = prefix;
 					bce->mn_suffix = info->mn_iid;
 					bce->mn_hw_address = hw_address;
@@ -406,12 +406,15 @@ int mag_fsm_v4(msg_info_t * info)
 					mac_addr_ntop(mac, (char *)&macStr);
 
 					bce = pmipv4_cache_alloc(BCE_TEMP);
-					bce->mn_suffix = info->mn_iid;
-					bce->mn_hw_address = hw_address;
-					result = mag_pmip_md(info, bce, 1);
-					dbg("Movement detection is finished, now going to add an entry into the cache for v4\n\n");
-					pmipv4_cache_add(bce);
-					dbg("pmip_cache_add is done \n\n");
+					if (bce != NULL)
+					{
+						bce->mn_suffix = info->mn_iid;
+						bce->mn_hw_address = hw_address;
+						result = mag_pmip_md(info, bce, 1);
+						dbg("Movement detection is finished, now going to add an entry into the cache for v4\n\n");
+						pmipv4_cache_add(bce);
+						dbg("pmip_cache_add is done \n\n");
+					}
 
 
 				}
@@ -439,9 +442,12 @@ int mag_fsm_v4(msg_info_t * info)
 					}
 					dbg("All checking Ok .Ready to send PBU\n");
 					bce = pmipv4_cache_alloc(BCE_TEMP);
-					bce->mn_suffix = info->mn_iid;
-					bce->mn_hw_address = hw_address;
-					bce->dhcp_requested_ip = info->dhcp_request_ip;
+					if (bce != NULL)
+					{
+						bce->mn_suffix = info->mn_iid;
+						bce->mn_hw_address = hw_address;
+						bce->dhcp_requested_ip = info->dhcp_request_ip;
+					}
 					result = mag_pmip_md(info, bce, 1);
 					dbg("DHCP REQUEST Movement detection is finished, now going to add an entry into the cache for v4\n\n");
 					pmipv4_cache_add(bce);
@@ -523,7 +529,7 @@ int mag_fsm_v4(msg_info_t * info)
 									{
 										dbg("Secondary ipv4 dns is also configured\n");
 										snprintf(temp,200, ",%s ",inet_ntoa(conf.SecondaryV4Dns) );
-										strcat(buff,temp);
+										strlcat(buff,temp);
 									}
 									else //only secondary dns
 									{
@@ -538,7 +544,7 @@ int mag_fsm_v4(msg_info_t * info)
 								else
 								{
 									dbg("adding dnsmasq dns option\n");
-								strcat(command,buff);
+								strlcat(command,buff);
 								}
 								if (conf.pmip_mode_type == IP_FAMILY_V4V6_V01)
 								{

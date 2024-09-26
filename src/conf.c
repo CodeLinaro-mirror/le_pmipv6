@@ -117,7 +117,7 @@ static int conf_alt_file(char *filename, int argc, char **argv)
 				return -EINVAL;
 			if (strlen(*cur_arg) >= MAXPATHLEN)
 				return -ENAMETOOLONG;
-			strcpy(filename, *cur_arg);
+			strlcpy(filename, *cur_arg);
 			return 0;
 		}
 		cur_arg++;
@@ -186,7 +186,7 @@ static int conf_file(struct mip6_config *c, char *filename)
 		system("echo 'pmip: No mem:error -ENOMEM ' > /dev/kmsg");
 		return -ENOMEM;
 	}
-	strcpy(c->config_file, filename);
+	strlcpy(c->config_file, filename);
 
 	ret = yyparse();
 
@@ -468,7 +468,7 @@ int conf_parse(struct mip6_config *c, int argc, char **argv)
 					argv[0]);
 			return -1;
 		}
-		strcpy(cfile, DEFAULT_CONFIG_FILE);
+		strlcpy(cfile, DEFAULT_CONFIG_FILE);
 	}
 
 	if (conf_file(c, cfile) < 0 && ret == 0)

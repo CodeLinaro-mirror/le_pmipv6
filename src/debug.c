@@ -46,14 +46,14 @@ static const char *dbg_strdate(char *str)
 
 	ret = clock_gettime(CLOCK_REALTIME, &ts);
 	if (ret != 0)
-		sprintf(str, "(clock_gettime error=%d)", errno);
+		snprintf(str,1024,"(clock_gettime error=%d)", errno);
 	else {
 		t = (time_t)ts.tv_sec; /* XXX: fix it! */
 		if (t == 0) {
-			strcpy(str, "(undefined)");
+			strlcpy(str, "(undefined)");
 		} else {
 			char buf[1024];
-			sprintf(str, "%.19s",
+			snprintf(str, 1024, "%.19s",
 					(ctime_r(&t, buf) ? buf : "(ctime_r error)"));
 		}
 	}
@@ -68,7 +68,7 @@ void dbgprint(const char *fname, const char *fmt, ...)
 	va_list args;
 
 	va_start(args, fmt);
-	vsprintf(s, fmt, args);
+	vsnprintf(s, 1024, fmt, args);
 	va_end(args);
 
 	memset(stime, '\0', sizeof(stime));
@@ -114,7 +114,7 @@ void dbgprintfilelineinfo(const char *filename,int line_num,const char *fname, c
 	}
 
 	va_start(args, fmt);
-	vsprintf(s, fmt, args);
+	vsnprintf(s, 1024, fmt, args);
 	va_end(args);
 
 	memset(stime, '\0', sizeof(stime));
@@ -126,7 +126,7 @@ void dbgprintfilelineinfo(const char *filename,int line_num,const char *fname, c
 	else
 		filenametm = filename;
 
-	if (fname)
+	if (fname && filenametm)
 		fprintf(sdbg, "[%s %d] %s: ",filenametm,line_num, fname);
 	fprintf(sdbg, "%s", s);
 	fflush(sdbg);
@@ -141,7 +141,7 @@ void debug_print_buffer(const void *data, int len, const char *fname,
 	va_list args;
 
 	va_start(args, fmt);
-	vsprintf(s, fmt, args);
+	vsnprintf(s, 1024, fmt, args);
 	fprintf(sdbg, "%s: %s", fname, s);
 	va_end(args);
 	for (i = 0; i < len; i++) {

@@ -384,6 +384,7 @@ int lma_update_binding_entry_with_DMNP_Home_addr(pmip_entry_t * bce, msg_info_t 
 		bce->dmnp_prefix_len= info->dmnp_prefix_len;
 		dbg("Has DMNP \n");
 	}
+	return 0;
 }
 
 //---------------------------------------------------------------------------------------------------------------------
@@ -397,7 +398,7 @@ int lma_update_binding_entry(pmip_entry_t * bce, msg_info_t * info, int is_v4_lm
 	char addr_buf[INET6_ADDRSTRLEN];
 	if (bce != NULL) {
 		if (info != NULL) {
-			int result;
+			int result = 0;
 			struct in6_addr r_tmp, r_tmp1;
 			struct in6_addr zero_v6;
 			memset(&r_tmp1, 0, sizeof(struct in6_addr));

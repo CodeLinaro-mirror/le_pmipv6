@@ -101,7 +101,7 @@ static void uerror(const char *fmt, ...) {
 
 	fprintf(stderr, "Error in configuration file %s\n", conf.config_file);
 	va_start(args, fmt);
-	vsprintf(s, fmt, args);
+	vsnprintf(s, sizeof(s), fmt, args);
 	fprintf(stderr, "line %d: %s\n", lineno, s);
 	va_end(args);
 }
@@ -400,7 +400,7 @@ mip6entity	: MIP6CN { $$ = MIP6_ENTITY_CN;	}
 ifacedef	: QSTRING ifacesub
 		{
 			struct net_iface *nni;
-			strncpy(ni.name, $1, IF_NAMESIZE - 1);
+			strlcpy(ni.name, $1, IF_NAMESIZE - 1);
 			ni.ifindex = if_nametoindex($1);
 			free($1);
 			if (ni.ifindex <= 0) {
@@ -449,7 +449,7 @@ linksub		: QSTRING '{' linkdefs '}'
 					"for homelink %d", hai.if_home);
 				return -1;
 			}
-			strncpy(hai.name, $1, IF_NAMESIZE - 1);
+			strlcpy(hai.name, $1, IF_NAMESIZE - 1);
 			hai.if_home = if_nametoindex($1);
 			free($1);
 			if (hai.if_home <= 0) {
